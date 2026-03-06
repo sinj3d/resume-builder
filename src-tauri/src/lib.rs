@@ -1,6 +1,8 @@
 mod db;
+mod rag;
 
 use db::DbState;
+use rag::EmbeddingState;
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -9,7 +11,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            // Resolve the database path inside Tauri's app data directory
+            // ── Database ──
             let app_data_dir = app
                 .path()
                 .app_data_dir()
@@ -22,8 +24,18 @@ pub fn run() {
                 db_path.to_str().expect("invalid db path"),
             )
             .expect("failed to initialize database");
-
             app.manage(DbState(Mutex::new(conn)));
+
+            // ── Embedding Model ──
+            let resource_dir = app
+                .path()
+                .resource_dir()
+                .expect("failed to resolve resource dir");
+            let model_dir = resource_dir.join("model");
+            let model = rag::EmbeddingModel::load(&model_dir)
+                .expect("failed to load embedding model");
+            app.manage(EmbeddingState(Mutex::new(model)));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -45,6 +57,10 @@ pub fn run() {
             db::commands::tag_bullet,
             db::commands::untag_bullet,
             db::commands::get_archetype_bullets,
+            // RAG / Embeddings
+            rag::commands::embed_bullet,
+            rag::commands::embed_all_bullets,
+            rag::commands::search_similar,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
