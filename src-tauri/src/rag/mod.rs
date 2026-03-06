@@ -104,3 +104,73 @@ impl EmbeddingModel {
         Ok(pooled)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// Resolve the model directory relative to the crate root.
+    fn model_dir() -> PathBuf {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set");
+        PathBuf::from(manifest).join("resources").join("model")
+    }
+
+    #[test]
+    fn test_model_loads() {
+        let dir = model_dir();
+        assert!(dir.join("model.onnx").exists(), "model.onnx not found at {:?}", dir);
+        assert!(dir.join("tokenizer.json").exists(), "tokenizer.json not found at {:?}", dir);
+        let _model = EmbeddingModel::load(&dir).expect("Failed to load embedding model");
+    }
+
+    #[test]
+    fn test_embed_produces_384d_normalized_vector() {
+        let dir = model_dir();
+        let mut model = EmbeddingModel::load(&dir).unwrap();
+
+        let embedding = model.embed("Built a REST API serving 10k requests per second").unwrap();
+
+        // Check dimension
+        assert_eq!(embedding.len(), 384, "Embedding should be 384-dimensional");
+
+        // Check L2 norm ≈ 1.0 (normalized)
+        let norm: f32 = embedding.iter().map(|v| v * v).sum::<f32>().sqrt();
+        assert!(
+            (norm - 1.0).abs() < 0.01,
+            "Embedding should be L2-normalized, got norm = {}",
+            norm
+        );
+
+        // Check not all zeros
+        let sum: f32 = embedding.iter().map(|v| v.abs()).sum();
+        assert!(sum > 0.1, "Embedding should not be all zeros");
+    }
+
+    #[test]
+    fn test_similar_texts_have_higher_cosine_similarity() {
+        let dir = model_dir();
+        let mut model = EmbeddingModel::load(&dir).unwrap();
+
+        let emb_a = model.embed("Developed a machine learning pipeline for NLP").unwrap();
+        let emb_b = model.embed("Built an ML system for natural language processing").unwrap();
+        let emb_c = model.embed("Baked chocolate chip cookies for the office party").unwrap();
+
+        // Cosine similarity (vectors are already L2-normalized, so dot product = cosine sim)
+        let sim_ab: f32 = emb_a.iter().zip(emb_b.iter()).map(|(a, b)| a * b).sum();
+        let sim_ac: f32 = emb_a.iter().zip(emb_c.iter()).map(|(a, b)| a * b).sum();
+
+        assert!(
+            sim_ab > sim_ac,
+            "Similar texts should have higher cosine similarity: sim(ML,ML)={:.4} vs sim(ML,cookies)={:.4}",
+            sim_ab,
+            sim_ac
+        );
+
+        // The ML texts should be fairly similar
+        assert!(sim_ab > 0.5, "Related texts should have cosine sim > 0.5, got {:.4}", sim_ab);
+        // The unrelated text should be much less similar
+        assert!(sim_ac < 0.5, "Unrelated texts should have cosine sim < 0.5, got {:.4}", sim_ac);
+    }
+}

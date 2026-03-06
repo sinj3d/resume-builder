@@ -1,7 +1,9 @@
 mod db;
+mod llm;
 mod rag;
 
 use db::DbState;
+use llm::LlmState;
 use rag::EmbeddingState;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -24,6 +26,11 @@ pub fn run() {
                 db_path.to_str().expect("invalid db path"),
             )
             .expect("failed to initialize database");
+
+            // ── LLM Settings ──
+            let llm_settings = llm::load_settings(&conn);
+            app.manage(LlmState(Mutex::new(llm_settings)));
+
             app.manage(DbState(Mutex::new(conn)));
 
             // ── Embedding Model ──
@@ -61,6 +68,10 @@ pub fn run() {
             rag::commands::embed_bullet,
             rag::commands::embed_all_bullets,
             rag::commands::search_similar,
+            // LLM / Cover Letter
+            llm::commands::generate_cover_letter,
+            llm::commands::get_llm_settings,
+            llm::commands::update_llm_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
