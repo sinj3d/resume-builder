@@ -1,14 +1,51 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+mod db;
+
+use db::DbState;
+use std::sync::Mutex;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .setup(|app| {
+            // Resolve the database path inside Tauri's app data directory
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("failed to resolve app data dir");
+            std::fs::create_dir_all(&app_data_dir)
+                .expect("failed to create app data directory");
+
+            let db_path = app_data_dir.join("resume_builder.db");
+            let conn = db::init_db(
+                db_path.to_str().expect("invalid db path"),
+            )
+            .expect("failed to initialize database");
+
+            app.manage(DbState(Mutex::new(conn)));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            // Experience CRUD
+            db::commands::create_experience,
+            db::commands::list_experiences,
+            db::commands::update_experience,
+            db::commands::delete_experience,
+            // Bullet point CRUD
+            db::commands::create_bullet,
+            db::commands::update_bullet,
+            db::commands::delete_bullet,
+            db::commands::list_bullets,
+            // Archetype CRUD
+            db::commands::create_archetype,
+            db::commands::list_archetypes,
+            db::commands::delete_archetype,
+            // Archetype tagging
+            db::commands::tag_bullet,
+            db::commands::untag_bullet,
+            db::commands::get_archetype_bullets,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
