@@ -8,7 +8,7 @@ A lightning-fast, locally hosted desktop application designed to manage a master
 * **Frontend Layer:** React (TypeScript), Tailwind CSS, Vite.
 * **Backend Layer:** Rust.
 * **Database:** Local SQLite bundled with `sqlite-vec` for vector extensions. 
-* **LaTeX Engine:** `tectonic` (Rust-based, self-contained LaTeX engine). Chosen because it compiles directly within the backend without requiring the user to install a massive TeX Live distribution.
+* **LaTeX Engine:** Standalone `tectonic` binary (`tectonic.exe`). The Rust backend will automatically download and manage the pre-built binary on first launch to bypass complex C++ build dependencies on Windows. This compiles documents in milliseconds without requiring the user to install a massive TeX Live distribution.
 * **AI / RAG Pipeline:**
     * *Embeddings:* Local inference via Rust (`ort` crate with `all-MiniLM-L6-v2`, `tokenizers` crate for text tokenization) to convert text to vectors.
     * *Generation:* Local SLM (e.g., Llama 3 8B or Phi-3) running via `llama.cpp` Rust bindings, fine-tuned or heavily prompted for cover letter synthesis.
@@ -19,8 +19,9 @@ A lightning-fast, locally hosted desktop application designed to manage a master
 3.  **Semantic Retrieval (RAG):** The backend converts a pasted job description into a vector, querying the SQLite database for the most relevant resume bullet points within a chosen archetype.
 4.  **Local Cover Letter Generation:** The backend constructs a strict prompt containing the retrieved bullet points and sends it to the local SLM to generate the letter.
 5.  **In-App LaTeX Editor & Compiler:** * A split-pane code editor in the UI. 
-    * The backend dynamically injects retrieved/selected bullet points into a `.tex` file.
-    * The `tectonic` engine compiles the document to PDF in milliseconds and renders it in the frontend viewer.
+    * The backend dynamically injects retrieved/selected bullet points into the chosen `.tex` template.
+    * The backend invokes the `tectonic` binary as a child process, which compiles the document to PDF in milliseconds and renders it in the frontend viewer.
+6.  **Template Management:** To offset the loss of detailed error parsing, user editing is restricted to the itemized bullet sections. To maintain formatting control, the system ships with several professional LaTeX templates, and users can upload/import their own custom templates via string replacement logic.
 
 ## 4. Default LaTeX Template
 The system will ship with a default, highly readable single-page template utilizing the `article` class. It includes pre-configured packages for optimal spacing (`geometry`, `titlesec`, `enumitem`) and uses a custom Maroon accent color (`\definecolor{maroon}{RGB}{128, 0, 0}`) for section headers to ensure ATS-friendly parsing while maintaining visual distinction.

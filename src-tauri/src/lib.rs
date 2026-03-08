@@ -1,7 +1,7 @@
 mod db;
+mod latex;
 mod llm;
 mod rag;
-
 use db::DbState;
 use llm::LlmState;
 use rag::EmbeddingState;
@@ -72,6 +72,11 @@ pub fn run() {
             llm::commands::generate_cover_letter,
             llm::commands::get_llm_settings,
             llm::commands::update_llm_settings,
+            // LaTeX
+            latex::commands::check_or_download_tectonic,
+            latex::commands::compile_tex,
+            latex::commands::get_templates,
+            latex::commands::inject_and_compile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

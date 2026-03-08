@@ -27,10 +27,13 @@ sqlite-vec = "0.1"
 ort = { version = "2.0.0-rc.12", features = ["download-binaries", "ndarray"] }
 tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
 ndarray = "0.17"
-reqwest = { version = "0.12", features = ["json"] }
-tokio = { version = "1", features = ["rt"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1", features = ["rt", "fs", "io-util", "process"] }
 encoding_rs = "0.8"
-
+zip = "0.6"
+bytes = "1"
+futures-util = "0.3"
+uuid = { version = "1.22.0", features = ["v4"] }
 [features]
 default = ["local-llm"]
 local-llm = ["llama-cpp-2"]
