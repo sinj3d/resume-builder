@@ -1,6 +1,5 @@
 use super::{compile_latex, download, template};
 use crate::db::DbState;
-use std::sync::MutexGuard;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
