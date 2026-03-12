@@ -12,6 +12,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // ── Database ──
             let app_data_dir = app
@@ -72,6 +73,7 @@ pub fn run() {
             llm::commands::generate_cover_letter,
             llm::commands::get_llm_settings,
             llm::commands::update_llm_settings,
+            llm::commands::extract_resume_pdf,
             // LaTeX
             latex::commands::check_or_download_tectonic,
             latex::commands::compile_tex,

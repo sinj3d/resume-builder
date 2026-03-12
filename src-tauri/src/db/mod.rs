@@ -37,7 +37,7 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             org         TEXT,
             start_date  TEXT,
             end_date    TEXT,
-            category    TEXT NOT NULL CHECK(category IN ('job', 'project', 'hackathon', 'education')),
+            category    TEXT NOT NULL,
             created_at  TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -72,6 +72,44 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         );
         "
     )?;
+
+    // Check if the experiences table has the old CHECK constraint
+    let create_sql: String = conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='experiences'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if create_sql.contains("CHECK(category IN") {
+        // Perform table swap to remove the constraint
+        conn.execute_batch(
+            "
+            PRAGMA foreign_keys=OFF;
+            BEGIN TRANSACTION;
+            
+            CREATE TABLE experiences_new (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                title       TEXT NOT NULL,
+                org         TEXT,
+                start_date  TEXT,
+                end_date    TEXT,
+                category    TEXT NOT NULL,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            
+            INSERT INTO experiences_new (id, title, org, start_date, end_date, category, created_at, updated_at)
+            SELECT id, title, org, start_date, end_date, category, created_at, updated_at FROM experiences;
+            
+            DROP TABLE experiences;
+            ALTER TABLE experiences_new RENAME TO experiences;
+            
+            COMMIT;
+            PRAGMA foreign_keys=ON;
+            "
+        )?;
+    }
+
     Ok(())
 }
 
@@ -256,26 +294,6 @@ mod tests {
         ).unwrap();
     }
 
-    #[test]
-    fn test_category_check_constraint() {
-        let conn = test_conn();
-        run_migrations(&conn).unwrap();
-
-        // Valid categories should work
-        for cat in &["job", "project", "hackathon", "education"] {
-            conn.execute(
-                "INSERT INTO experiences (title, category) VALUES (?1, ?2)",
-                rusqlite::params![format!("Test {}", cat), cat],
-            ).unwrap();
-        }
-
-        // Invalid category should fail
-        let result = conn.execute(
-            "INSERT INTO experiences (title, category) VALUES ('Bad', 'invalid_category')",
-            [],
-        );
-        assert!(result.is_err(), "Invalid category should be rejected by CHECK constraint");
-    }
 
     #[test]
     fn test_vec0_embedding_insert_and_query() {

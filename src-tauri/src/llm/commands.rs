@@ -165,3 +165,57 @@ pub fn update_llm_settings(
 
     Ok(())
 }
+
+/// Extract resume text from a PDF and parse it into structured JSON experiences using the Cloud LLM.
+#[tauri::command]
+pub async fn extract_resume_pdf(
+    llm_state: State<'_, LlmState>,
+    pdf_path: String,
+) -> Result<String, String> {
+    let settings = {
+        llm_state.0.lock().map_err(|e| e.to_string())?.clone()
+    };
+
+    let key = settings
+        .api_key
+        .as_deref()
+        .ok_or("No API key configured. You must set a Cloud API Key in Settings for PDF parsing.")?;
+    
+    let model_name = settings
+        .cloud_model
+        .as_deref()
+        .unwrap_or("gemini-2.0-flash");
+
+    // Extract text from PDF
+    let text = pdf_extract::extract_text(&pdf_path)
+        .map_err(|e| format!("Failed to read PDF text: {}", e))?;
+
+    let prompt = format!(
+        "System: You are an expert Applicant Tracking System (ATS). Parse the following resume text into a strict JSON payload. Return ONLY raw JSON, no markdown formatting blocks like ```json.
+The JSON must follow this exact exact schema:
+{{
+  \"experiences\": [
+    {{
+      \"title\": \"Role Title\",
+      \"org\": \"Organization/Company\",
+      \"start_date\": \"String (e.g. Jan 2020)\",
+      \"end_date\": \"String (e.g. Present)\",
+      \"category\": \"String (Work, Project, Education)\",
+      \"bullets\": [
+        \"Accomplishment 1\",
+        \"Accomplishment 2\"
+      ]
+    }}
+  ]
+}}
+
+Resume Text:
+{}
+",
+        text
+    );
+
+    crate::llm::generate_cloud(&prompt, key, model_name)
+        .await
+        .map_err(|e| format!("Cloud parsing failed: {}", e))
+}

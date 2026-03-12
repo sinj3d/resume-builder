@@ -35,6 +35,8 @@ zip = "0.6"
 bytes = "1"
 futures-util = "0.3"
 uuid = { version = "1.22.0", features = ["v4"] }
+pdf-extract = "0.7"
+tauri-plugin-dialog = "2.6.0"
 [features]
 default = ["local-llm"]
 local-llm = ["llama-cpp-2"]
