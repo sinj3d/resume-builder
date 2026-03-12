@@ -23,7 +23,7 @@ impl Default for LlmSettings {
             mode: "cloud".to_string(),
             gguf_path: None,
             api_key: None,
-            cloud_model: Some("gemini-2.0-flash".to_string()),
+            cloud_model: Some("gemini-2.5-flash".to_string()),
         }
     }
 }
@@ -50,7 +50,7 @@ pub async fn generate_cloud(
         }],
         "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 2048,
+            "maxOutputTokens": 8192,
         }
     });
 

@@ -50,3 +50,27 @@ pub struct UpdateExperienceInput {
     pub end_date: Option<String>,
     pub category: Option<String>,
 }
+
+/// Biographical information for the resume header.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bio {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub location: Option<String>,
+    pub linkedin: Option<String>,
+    pub github: Option<String>,
+    pub website: Option<String>,
+}
+
+/// Input payload for updating the bio.
+#[derive(Debug, Deserialize)]
+pub struct UpdateBioInput {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub location: Option<String>,
+    pub linkedin: Option<String>,
+    pub github: Option<String>,
+    pub website: Option<String>,
+}

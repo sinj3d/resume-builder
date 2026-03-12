@@ -65,6 +65,9 @@ pub fn run() {
             db::commands::tag_bullet,
             db::commands::untag_bullet,
             db::commands::get_archetype_bullets,
+            // Bio
+            db::commands::get_bio,
+            db::commands::update_bio,
             // RAG / Embeddings
             rag::commands::embed_bullet,
             rag::commands::embed_all_bullets,
@@ -78,6 +81,7 @@ pub fn run() {
             latex::commands::check_or_download_tectonic,
             latex::commands::compile_tex,
             latex::commands::get_templates,
+            latex::commands::get_default_template,
             latex::commands::inject_and_compile,
         ])
         .run(tauri::generate_context!())

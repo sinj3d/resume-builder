@@ -1,8 +1,9 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { Briefcase, Tags, FileText, FileCode2, Settings, PenTool } from 'lucide-react';
+import { Briefcase, Tags, FileText, FileCode2, Settings, PenTool, UserCircle } from 'lucide-react';
 
 export default function Layout() {
     const navItems = [
+        { to: "/bio", label: "Profiler", icon: UserCircle },
         { to: "/", label: "Experiences", icon: Briefcase },
         { to: "/archetypes", label: "Archetypes", icon: Tags },
         { to: "/generate", label: "Cover Letter", icon: FileText },

@@ -381,6 +381,83 @@ pub fn get_archetype_bullets(
             })
         })
         .map_err(|e| e.to_string())?;
-
     Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// ──────────────────────────────────────────────
+// Bio CRUD
+// ──────────────────────────────────────────────
+
+/// Get the user's biographical information.
+#[tauri::command]
+pub fn get_bio(state: State<'_, DbState>) -> Result<Bio, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    
+    // There's only one row with id = 1
+    let bio: Bio = conn.query_row(
+        "SELECT name, email, phone, location, linkedin, github, website FROM bio WHERE id = 1",
+        [],
+        |row| {
+            Ok(Bio {
+                name: row.get(0)?,
+                email: row.get(1)?,
+                phone: row.get(2)?,
+                location: row.get(3)?,
+                linkedin: row.get(4)?,
+                github: row.get(5)?,
+                website: row.get(6)?,
+            })
+        },
+    ).unwrap_or(Bio {
+        name: None,
+        email: None,
+        phone: None,
+        location: None,
+        linkedin: None,
+        github: None,
+        website: None,
+    });
+
+    Ok(bio)
+}
+
+/// Update the user's biographical information.
+#[tauri::command]
+pub fn update_bio(
+    state: State<'_, DbState>,
+    input: UpdateBioInput,
+) -> Result<Bio, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE bio SET name = ?1, email = ?2, phone = ?3, location = ?4, linkedin = ?5, github = ?6, website = ?7 WHERE id = 1",
+        rusqlite::params![
+            input.name,
+            input.email,
+            input.phone,
+            input.location,
+            input.linkedin,
+            input.github,
+            input.website
+        ],
+    ).map_err(|e| format!("Failed to update bio: {}", e))?;
+
+    // Re-fetch
+    let bio: Bio = conn.query_row(
+        "SELECT name, email, phone, location, linkedin, github, website FROM bio WHERE id = 1",
+        [],
+        |row| {
+            Ok(Bio {
+                name: row.get(0)?,
+                email: row.get(1)?,
+                phone: row.get(2)?,
+                location: row.get(3)?,
+                linkedin: row.get(4)?,
+                github: row.get(5)?,
+                website: row.get(6)?,
+            })
+        },
+    ).map_err(|e| format!("Failed to fetch updated bio: {}", e))?;
+
+    Ok(bio)
 }

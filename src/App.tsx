@@ -6,6 +6,7 @@ import GeneratePage from './pages/GeneratePage';
 import LatexPage from './pages/LatexPage';
 import SettingsPage from './pages/SettingsPage';
 import OnboardingPage from './pages/OnboardingPage';
+import BioPage from './pages/BioPage';
 import './App.css';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
           <Route path="generate" element={<GeneratePage />} />
           <Route path="latex" element={<LatexPage />} />
           <Route path="onboarding" element={<OnboardingPage />} />
+          <Route path="bio" element={<BioPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

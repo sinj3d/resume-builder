@@ -108,7 +108,7 @@ pub async fn generate_cover_letter(
             let model_name = settings
                 .cloud_model
                 .as_deref()
-                .unwrap_or("gemini-2.0-flash");
+                .unwrap_or("gemini-2.5-flash");
             crate::llm::generate_cloud(&prompt, key, model_name)
                 .await
                 .map_err(|e| format!("Cloud generation failed: {}", e))?
@@ -184,7 +184,7 @@ pub async fn extract_resume_pdf(
     let model_name = settings
         .cloud_model
         .as_deref()
-        .unwrap_or("gemini-2.0-flash");
+        .unwrap_or("gemini-2.5-flash");
 
     // Extract text from PDF
     let text = pdf_extract::extract_text(&pdf_path)

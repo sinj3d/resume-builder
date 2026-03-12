@@ -10,6 +10,16 @@ export interface Experience {
   created_at?: string;
 }
 
+export interface Bio {
+    name?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    linkedin?: string;
+    github?: string;
+    website?: string;
+}
+
 export interface BulletPoint {
   id: number;
   experience_id: number;
@@ -42,7 +52,7 @@ export interface GenerationResult {
 // Database Commands
 export const listExperiences = () => invoke<Experience[]>('list_experiences');
 export const createExperience = (title: string, org: string, start_date: string, end_date: string, category: string) =>
-  invoke<number>('create_experience', { 
+  invoke<Experience>('create_experience', { 
     input: { 
       title, 
       org: org || null, 
@@ -63,6 +73,9 @@ export const updateExperience = (id: number, title: string, org: string, start_d
     } 
   });
 export const deleteExperience = (id: number) => invoke('delete_experience', { id });
+
+export const getBio = () => invoke<Bio>('get_bio');
+export const updateBio = (bio: Bio) => invoke<Bio>('update_bio', { input: bio });
 
 export const listBullets = (experience_id: number) => invoke<BulletPoint[]>('list_bullets', { experienceId: experience_id });
 export const createBullet = (experience_id: number, content: string) =>

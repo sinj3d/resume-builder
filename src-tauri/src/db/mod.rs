@@ -70,6 +70,18 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS bio (
+            id       INTEGER PRIMARY KEY CHECK (id = 1),
+            name     TEXT,
+            email    TEXT,
+            phone    TEXT,
+            location TEXT,
+            linkedin TEXT,
+            github   TEXT,
+            website  TEXT
+        );
+        INSERT OR IGNORE INTO bio (id) VALUES (1);
         "
     )?;
 

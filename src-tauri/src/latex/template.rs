@@ -15,6 +15,8 @@ pub const CLASSIC_MAROON_TEMPLATE: &str = r#"
 
 \begin{document}
 
+% {INJECT_BIO_HEADER}
+
 \section*{Professional Experience}
 
 \begin{itemize}[leftmargin=*, noitemsep]
@@ -41,6 +43,8 @@ pub const MODERN_BLUE_TEMPLATE: &str = r#"
 
 \begin{document}
 
+% {INJECT_BIO_HEADER}
+
 \section*{Professional Experience}
 
 \begin{itemize}[leftmargin=*, noitemsep]
@@ -66,6 +70,8 @@ pub const MINIMALIST_BLACK_TEMPLATE: &str = r#"
   {}[]
 
 \begin{document}
+
+% {INJECT_BIO_HEADER}
 
 \section*{Professional Experience}
 
@@ -96,6 +102,22 @@ pub fn inject_bullets(template: &str, bullets: &[String]) -> String {
     }
 
     template.replace("% {INJECT_BULLETS_HERE}", &itemized)
+}
+
+pub fn inject_bio_header(template: &str, name: &str, details: &[String]) -> String {
+    let mut header = String::from("\\begin{center}\n");
+    if !name.is_empty() {
+        header.push_str(&format!("    {{\\huge \\textbf{{{}}}}} \\\\\n    \\vspace{{2pt}}\n", name));
+    }
+    
+    // Join the details with a dot
+    let joined = details.join(" $\\cdot$ ");
+    if !joined.is_empty() {
+        header.push_str(&format!("    {} \\\\\n", joined));
+    }
+    header.push_str("\\end{center}\n\\vspace{10pt}");
+
+    template.replace("% {INJECT_BIO_HEADER}", &header)
 }
 
 #[cfg(test)]

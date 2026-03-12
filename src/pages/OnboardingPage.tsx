@@ -32,7 +32,9 @@ export default function OnboardingPage() {
         setError(null);
         try {
             const result = await extractResumePdf(selectedFile);
-            const data = JSON.parse(result);
+            // Clean up potential markdown wrapper from LLM
+            const cleanResult = result.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+            const data = JSON.parse(cleanResult);
             if (data.experiences) {
                 setParsedData(data);
                 setStep(2);
@@ -54,9 +56,9 @@ export default function OnboardingPage() {
         try {
             // Write each experience and its bullets to the DB sequentially
             for (const exp of parsedData.experiences) {
-                const expId = await createExperience(exp.title, exp.org, exp.start_date, exp.end_date, exp.category);
+                const createdExp = await createExperience(exp.title, exp.org, exp.start_date, exp.end_date, exp.category);
                 for (const bText of exp.bullets) {
-                    await createBullet(expId, bText);
+                    await createBullet(createdExp.id, bText);
                 }
             }
             setStep(3);
@@ -188,7 +190,7 @@ export default function OnboardingPage() {
                     </div>
 
                     <button 
-                        onClick={() => navigate('/experiences')}
+                        onClick={() => navigate('/')}
                         className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-xl font-semibold shadow-md transition-colors"
                     >
                         View Experiences
