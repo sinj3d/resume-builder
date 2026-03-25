@@ -30,6 +30,21 @@ pub struct Archetype {
     pub name: String,
 }
 
+/// A professional skill configurable by category.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Skill {
+    pub id: i64,
+    pub category: String,
+    pub name: String,
+}
+
+/// Input payload for creating a skill.
+#[derive(Debug, Deserialize)]
+pub struct CreateSkillInput {
+    pub category: String,
+    pub name: String,
+}
+
 /// Input payload for creating an experience.
 #[derive(Debug, Deserialize)]
 pub struct CreateExperienceInput {

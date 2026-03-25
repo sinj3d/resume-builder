@@ -61,6 +61,25 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             PRIMARY KEY (archetype_id, bullet_point_id)
         );
 
+        CREATE TABLE IF NOT EXISTS archetype_experiences (
+            archetype_id    INTEGER NOT NULL REFERENCES archetypes(id) ON DELETE CASCADE,
+            experience_id   INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+            PRIMARY KEY (archetype_id, experience_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS skills (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            name     TEXT NOT NULL,
+            UNIQUE(category, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS archetype_skills (
+            archetype_id INTEGER NOT NULL REFERENCES archetypes(id) ON DELETE CASCADE,
+            skill_id     INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+            PRIMARY KEY (archetype_id, skill_id)
+        );
+
         CREATE VIRTUAL TABLE IF NOT EXISTS bullet_embeddings USING vec0(
             bullet_id INTEGER PRIMARY KEY,
             embedding FLOAT[384]

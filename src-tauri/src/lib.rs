@@ -65,6 +65,16 @@ pub fn run() {
             db::commands::tag_bullet,
             db::commands::untag_bullet,
             db::commands::get_archetype_bullets,
+            db::commands::tag_experience,
+            db::commands::untag_experience,
+            db::commands::get_archetype_experiences,
+            // Skills
+            db::commands::create_skill,
+            db::commands::list_skills,
+            db::commands::delete_skill,
+            db::commands::tag_skill,
+            db::commands::untag_skill,
+            db::commands::get_archetype_skills,
             // Bio
             db::commands::get_bio,
             db::commands::update_bio,
@@ -82,7 +92,9 @@ pub fn run() {
             latex::commands::compile_tex,
             latex::commands::get_templates,
             latex::commands::get_default_template,
-            latex::commands::inject_and_compile,
+            latex::commands::inject_template,
+            latex::commands::get_archetype_sections,
+            latex::commands::save_pdf,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

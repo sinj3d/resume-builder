@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getBio, updateBio, Bio } from '../lib/tauri';
-import { UserCircle, Save, CheckCircle2 } from 'lucide-react';
+import { getBio, updateBio, Bio, Skill, createSkill, listSkills, deleteSkill } from '../lib/tauri';
+import { UserCircle, Save, CheckCircle2, Trash2, Plus } from 'lucide-react';
 
 export default function BioPage() {
     const [bioForm, setBioForm] = useState<Bio>({
@@ -15,8 +15,14 @@ export default function BioPage() {
     const [notification, setNotification] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
+    // Skills state
+    const [skills, setSkills] = useState<Skill[]>([]);
+    const [newSkillCategory, setNewSkillCategory] = useState('');
+    const [newSkillName, setNewSkillName] = useState('');
+
     useEffect(() => {
         loadBio();
+        loadSkills();
     }, []);
 
     // Clear notification after 3 seconds
@@ -49,6 +55,36 @@ export default function BioPage() {
             });
         } catch (err: any) {
             console.error('Failed to load bio', err);
+        }
+    };
+
+    const loadSkills = async () => {
+        try {
+            const data = await listSkills();
+            setSkills(data);
+        } catch (err: any) {
+            console.error('Failed to load skills', err);
+        }
+    };
+
+    const handleAddSkill = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newSkillCategory.trim() || !newSkillName.trim()) return;
+        try {
+            await createSkill(newSkillCategory.trim(), newSkillName.trim());
+            setNewSkillName('');
+            await loadSkills();
+        } catch (err: any) {
+            setError(typeof err === 'string' ? err : err.message || JSON.stringify(err));
+        }
+    };
+
+    const handleDeleteSkill = async (id: number) => {
+        try {
+            await deleteSkill(id);
+            await loadSkills();
+        } catch (err: any) {
+            setError(typeof err === 'string' ? err : err.message || JSON.stringify(err));
         }
     };
 
@@ -204,6 +240,75 @@ export default function BioPage() {
                         </button>
                     </div>
                 </form>
+            </div>
+
+            {/* Skills Section */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm max-w-3xl flex-1 w-full mx-auto md:mx-0">
+                <form onSubmit={handleAddSkill} className="flex flex-col gap-4 mb-8">
+                    <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700 pb-2">
+                        Professional Skills
+                    </h2>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm">
+                        Add quantifiable skills, grouped by category (e.g. Languages, Frameworks, Tools). These will be injected into your generated resume.
+                    </p>
+                    <div className="flex gap-4 items-end">
+                        <div className="flex flex-col gap-1.5 flex-1">
+                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Category</label>
+                            <input
+                                className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                placeholder="e.g. Frontend Frameworks"
+                                value={newSkillCategory}
+                                onChange={(e) => setNewSkillCategory(e.target.value)}
+                                list="existing-categories"
+                            />
+                            <datalist id="existing-categories">
+                                {Array.from(new Set(skills.map(s => s.category))).sort().map(cat => (
+                                    <option key={cat} value={cat} />
+                                ))}
+                            </datalist>
+                        </div>
+                        <div className="flex flex-col gap-1.5 flex-1">
+                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Skill Name</label>
+                            <input
+                                className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                placeholder="e.g. React.js"
+                                value={newSkillName}
+                                onChange={(e) => setNewSkillName(e.target.value)}
+                            />
+                        </div>
+                        <button type="submit" disabled={!newSkillCategory.trim() || !newSkillName.trim()} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800 disabled:opacity-50 text-white font-semibold py-2 px-6 rounded-lg transition-colors flex items-center gap-2">
+                            <Plus size={18} /> Add
+                        </button>
+                    </div>
+                </form>
+
+                {/* List Grouped Skills */}
+                <div className="flex flex-col gap-6">
+                    {Array.from(new Set(skills.map(s => s.category))).sort().map(category => (
+                        <div key={category} className="flex flex-col gap-3">
+                            <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-md">{category}</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {skills.filter(s => s.category === category).map(skill => (
+                                    <div key={skill.id} className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 px-3 py-1.5 rounded-full text-sm">
+                                        <span>{skill.name}</span>
+                                        <button
+                                            onClick={() => handleDeleteSkill(skill.id)}
+                                            className="text-slate-400 hover:text-red-500 transition-colors"
+                                            title="Delete skill"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                    {skills.length === 0 && (
+                        <div className="text-center text-slate-500 dark:text-slate-400 py-4 italic text-sm border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                            No skills added yet. They will appear here.
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

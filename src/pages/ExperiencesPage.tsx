@@ -128,7 +128,7 @@ export default function ExperiencesPage() {
 
     // Calculate unique categories for the dropdown
     const availableCategories = useMemo(() => {
-        const defaults = ['Work', 'Education', 'Project', 'Leadership', 'Volunteer'];
+        const defaults = ['Professional Experience', 'Education', 'Project', 'Leadership', 'Volunteer'];
         const existing = experiences.map(e => e.category);
         return Array.from(new Set([...defaults, ...existing]));
     }, [experiences]);

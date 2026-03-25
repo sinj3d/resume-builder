@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { 
     listArchetypes, createArchetype, deleteArchetype, Archetype,
-    listExperiences, listBullets, Experience, BulletPoint,
-    getArchetypeBullets, tagBullet, untagBullet
+    listExperiences, Experience, listSkills, Skill,
+    getArchetypeExperiences, tagExperience, untagExperience,
+    getArchetypeSkills, tagSkill, untagSkill
 } from '../lib/tauri';
 import { Plus, Trash2, Tag, CheckSquare, Square, ChevronRight, Layers } from 'lucide-react';
 
@@ -11,16 +12,17 @@ export default function ArchetypesPage() {
     const [name, setName] = useState('');
     const [selectedArchetype, setSelectedArchetype] = useState<Archetype | null>(null);
 
-    // To display the master list of bullets to tag
+    // Master lists
     const [experiences, setExperiences] = useState<Experience[]>([]);
-    const [allBullets, setAllBullets] = useState<Record<number, BulletPoint[]>>({}); // expId -> bullets
+    const [skillsMap, setSkillsMap] = useState<Record<string, Skill[]>>({});
     
-    // To track which bullets belong to the selected archetype
-    const [taggedBulletIds, setTaggedBulletIds] = useState<Set<number>>(new Set());
+    // Tagged states for the selected archetype
+    const [taggedExpIds, setTaggedExpIds] = useState<Set<number>>(new Set());
+    const [taggedSkillIds, setTaggedSkillIds] = useState<Set<number>>(new Set());
 
     useEffect(() => {
         loadArchetypes();
-        loadMasterList();
+        loadMasterLists();
     }, []);
 
     const loadArchetypes = async () => {
@@ -32,28 +34,33 @@ export default function ArchetypesPage() {
         }
     };
 
-    const loadMasterList = async () => {
+    const loadMasterLists = async () => {
         try {
             const exps = await listExperiences();
             setExperiences(exps);
-            const bulletsMap: Record<number, BulletPoint[]> = {};
-            for (const exp of exps) {
-                const b = await listBullets(exp.id);
-                bulletsMap[exp.id] = b;
+            
+            const skills = await listSkills();
+            const sm: Record<string, Skill[]> = {};
+            for (const s of skills) {
+                if (!sm[s.category]) sm[s.category] = [];
+                sm[s.category].push(s);
             }
-            setAllBullets(bulletsMap);
+            setSkillsMap(sm);
         } catch (error) {
-            console.error('Failed to load master list', error);
+            console.error('Failed to load master lists', error);
         }
     };
 
     const handleSelectArchetype = async (arch: Archetype) => {
         setSelectedArchetype(arch);
         try {
-            const bullets = await getArchetypeBullets(arch.id);
-            setTaggedBulletIds(new Set(bullets.map(b => b.id)));
+            const exps = await getArchetypeExperiences(arch.id);
+            setTaggedExpIds(new Set(exps.map(e => e.id)));
+            
+            const sks = await getArchetypeSkills(arch.id);
+            setTaggedSkillIds(new Set(sks.map(s => s.id)));
         } catch (error) {
-            console.error('Failed to fetch archetype bullets', error);
+            console.error('Failed to fetch archetype tags', error);
         }
     };
 
@@ -68,26 +75,49 @@ export default function ArchetypesPage() {
         }
     };
 
-    const toggleTag = async (bulletId: number) => {
+    const toggleExpTag = async (expId: number) => {
         if (!selectedArchetype) return;
         try {
-            if (taggedBulletIds.has(bulletId)) {
-                await untagBullet(selectedArchetype.id, bulletId);
-                setTaggedBulletIds(prev => {
+            if (taggedExpIds.has(expId)) {
+                await untagExperience(selectedArchetype.id, expId);
+                setTaggedExpIds(prev => {
                     const next = new Set(prev);
-                    next.delete(bulletId);
+                    next.delete(expId);
                     return next;
                 });
             } else {
-                await tagBullet(selectedArchetype.id, bulletId);
-                setTaggedBulletIds(prev => {
+                await tagExperience(selectedArchetype.id, expId);
+                setTaggedExpIds(prev => {
                     const next = new Set(prev);
-                    next.add(bulletId);
+                    next.add(expId);
                     return next;
                 });
             }
         } catch (error) {
-            console.error('Failed to toggle tag', error);
+            console.error('Failed to toggle experience tag', error);
+        }
+    };
+
+    const toggleSkillTag = async (skillId: number) => {
+        if (!selectedArchetype) return;
+        try {
+            if (taggedSkillIds.has(skillId)) {
+                await untagSkill(selectedArchetype.id, skillId);
+                setTaggedSkillIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(skillId);
+                    return next;
+                });
+            } else {
+                await tagSkill(selectedArchetype.id, skillId);
+                setTaggedSkillIds(prev => {
+                    const next = new Set(prev);
+                    next.add(skillId);
+                    return next;
+                });
+            }
+        } catch (error) {
+            console.error('Failed to toggle skill tag', error);
         }
     };
 
@@ -97,7 +127,8 @@ export default function ArchetypesPage() {
             await deleteArchetype(id);
             if (selectedArchetype?.id === id) {
                 setSelectedArchetype(null);
-                setTaggedBulletIds(new Set());
+                setTaggedExpIds(new Set());
+                setTaggedSkillIds(new Set());
             }
             loadArchetypes();
         } catch (error) {
@@ -168,7 +199,7 @@ export default function ArchetypesPage() {
                     </div>
                 </div>
 
-                {/* Right Panel: Checkbox Matrix */}
+                {/* Right Panel: Dual Checkbox Matrix */}
                 <div className="w-full lg:w-2/3 flex flex-col">
                     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-full overflow-hidden">
                         <div className="p-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20">
@@ -185,50 +216,92 @@ export default function ArchetypesPage() {
                             {!selectedArchetype ? (
                                 <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-3 text-center">
                                     <Tag size={48} className="opacity-20" />
-                                    <p>Select an archetype from the list on the left to assign bullet points to it.</p>
+                                    <p>Select an archetype from the list on the left to assign experiences and skills to it.</p>
                                 </div>
                             ) : (
-                                <div className="flex flex-col gap-8 pr-2">
-                                    {experiences.map(exp => {
-                                        const expBullets = allBullets[exp.id] || [];
-                                        if (expBullets.length === 0) return null; // Skip empty experiences
+                                <div className="flex flex-col gap-10 pr-2">
+                                    {/* Skills Section */}
+                                    <div className="flex flex-col gap-4">
+                                        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-2">
+                                            1. Include Skills
+                                        </h3>
+                                        <div className="flex flex-col gap-6 pl-2">
+                                            {Object.entries(skillsMap).map(([category, sks]) => (
+                                                <div key={category} className="flex flex-col gap-3">
+                                                    <h4 className="font-semibold text-slate-700 dark:text-slate-300">{category}</h4>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {sks.map(skill => {
+                                                            const isTagged = taggedSkillIds.has(skill.id);
+                                                            return (
+                                                                <button
+                                                                    key={skill.id}
+                                                                    onClick={() => toggleSkillTag(skill.id)}
+                                                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-sm ${
+                                                                        isTagged 
+                                                                        ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-sm font-medium' 
+                                                                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
+                                                                    }`}
+                                                                >
+                                                                    {isTagged ? <CheckSquare size={16} /> : <Square size={16} />}
+                                                                    {skill.name}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {Object.keys(skillsMap).length === 0 && (
+                                                <p className="text-sm text-slate-500 italic">No skills exist yet. Add them in the Profiler tab.</p>
+                                            )}
+                                        </div>
+                                    </div>
 
-                                        return (
-                                            <div key={exp.id} className="flex flex-col gap-3">
-                                                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-2">
-                                                    {exp.title} <span className="text-slate-500 font-normal">at {exp.org}</span>
-                                                </h3>
-                                                
-                                                <ul className="flex flex-col gap-2">
-                                                    {expBullets.map(bullet => {
-                                                        const isTagged = taggedBulletIds.has(bullet.id);
-                                                        return (
-                                                            <li 
-                                                                key={bullet.id}
-                                                                onClick={() => toggleTag(bullet.id)}
-                                                                className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
-                                                                    isTagged 
-                                                                    ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 shadow-sm' 
-                                                                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
-                                                                }`}
-                                                            >
-                                                                <div className="mt-0.5 shrink-0 text-blue-500 transition-transform">
-                                                                    {isTagged ? <CheckSquare size={18} className="text-blue-600 dark:text-blue-400" /> : <Square size={18} className="text-slate-300 dark:text-slate-600" />}
+                                    {/* Experiences Section */}
+                                    <div className="flex flex-col gap-4">
+                                        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-2">
+                                            2. Include Experiences
+                                        </h3>
+                                        <p className="text-sm text-slate-500 dark:text-slate-400 pl-2">
+                                            Select entire experiences to include. All of their bullet points will be transferred automatically.
+                                        </p>
+                                        <div className="flex flex-col gap-3 pl-2">
+                                            {experiences.map(exp => {
+                                                const isTagged = taggedExpIds.has(exp.id);
+                                                return (
+                                                    <div 
+                                                        key={exp.id}
+                                                        onClick={() => toggleExpTag(exp.id)}
+                                                        className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer ${
+                                                            isTagged 
+                                                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 shadow-md' 
+                                                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
+                                                        }`}
+                                                    >
+                                                        <div className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="text-blue-500">
+                                                                    {isTagged ? <CheckSquare size={20} className="text-blue-600 dark:text-blue-400" /> : <Square size={20} className="text-slate-300 dark:text-slate-600" />}
                                                                 </div>
-                                                                <div className={`flex-1 text-sm ${isTagged ? 'text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-600 dark:text-slate-400'}`}>
-                                                                    {bullet.content}
-                                                                </div>
-                                                            </li>
-                                                        );
-                                                    })}
-                                                </ul>
-                                            </div>
-                                        );
-                                    })}
+                                                                <span className={`font-semibold text-lg ${isTagged ? 'text-blue-900 dark:text-blue-100' : 'text-slate-800 dark:text-slate-200'}`}>
+                                                                    {exp.title}
+                                                                </span>
+                                                            </div>
+                                                            <div className="pl-8 text-sm text-slate-500 dark:text-slate-400">
+                                                                {exp.org} • {exp.start_date} to {exp.end_date || 'Present'}
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 text-xs font-semibold px-2 py-1 rounded-md uppercase tracking-wider">
+                                                            {exp.category}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
 
-                                    {experiences.every(exp => (allBullets[exp.id] || []).length === 0) && (
-                                        <p className="text-sm text-slate-500 italic">No bullet points exist yet. Go to the Experiences tab to add some.</p>
-                                    )}
+                                            {experiences.length === 0 && (
+                                                <p className="text-sm text-slate-500 italic">No experiences exist yet. Go to the Experiences tab to add some.</p>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>

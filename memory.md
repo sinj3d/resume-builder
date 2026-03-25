@@ -37,6 +37,15 @@
 - [x] Phase 4: LaTeX Engine (Rust)
 - [x] Phase 5: Minimal Frontend (React/TS)
 - [x] Phase 6: Polish Phase (Tailwind UI, Nested Bullets, Latex Injection, Archetype Tags, PDF Parsing Onboarding)
+- [x] Phase 7: Resume Layout Enhancements
+  - Category-based section grouping (Education, Professional Experience, Projects, etc.) — each category → own `\section*{}`
+  - Drag-and-drop section ordering panel in `LatexPage.tsx` via `@hello-pangea/dnd`
+  - Page length selector (1/2/3 pages) with dynamic `\titlespacing` / `\parskip` calibration
+  - Font size guard: error returned if spacing would require <9pt font
+  - Page numbers suppressed with `\pagestyle{empty}`
+  - Category normalization: `normalize_category()` in `template.rs` maps `"Work"` → `"Professional Experience"` etc.
+  - New Tauri command: `get_archetype_sections` (returns ordered canonical section headings for selected archetype)
 - **Bugfixes:** 
   - Removed `CHECK` constraint on `experiences.category` to allow custom frontend categories.
   - Fixed Tauri IPC parameter names in frontend `tauri.ts` (`start_date` -> `startDate`, `end_date` -> `endDate`) to match Tauri's camelCase expectations.
+  - Fixed malformed `\titleformat` calls (missing `{sep}{before-code}` args) that caused Tectonic to fail with `Paragraph ended before \ttl@format@ii`.

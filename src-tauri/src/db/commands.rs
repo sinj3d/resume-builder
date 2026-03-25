@@ -461,3 +461,149 @@ pub fn update_bio(
 
     Ok(bio)
 }
+
+// ──────────────────────────────────────────────
+// Experience-Archetype Tagging
+// ──────────────────────────────────────────────
+
+#[tauri::command]
+pub fn tag_experience(state: State<'_, DbState>, archetype_id: i64, experience_id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR IGNORE INTO archetype_experiences (archetype_id, experience_id) VALUES (?1, ?2)",
+        [archetype_id, experience_id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn untag_experience(state: State<'_, DbState>, archetype_id: i64, experience_id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM archetype_experiences WHERE archetype_id = ?1 AND experience_id = ?2",
+        [archetype_id, experience_id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_archetype_experiences(state: State<'_, DbState>, archetype_id: i64) -> Result<Vec<Experience>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("
+            SELECT e.id, e.title, e.org, e.start_date, e.end_date, e.category, e.created_at, e.updated_at
+            FROM experiences e
+            JOIN archetype_experiences ae ON e.id = ae.experience_id
+            WHERE ae.archetype_id = ?1
+            ORDER BY e.created_at DESC
+        ")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([archetype_id], |row| {
+            Ok(Experience {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                org: row.get(2)?,
+                start_date: row.get(3)?,
+                end_date: row.get(4)?,
+                category: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let exps: Vec<Experience> = rows.filter_map(|r| r.ok()).collect();
+    Ok(exps)
+}
+
+// ──────────────────────────────────────────────
+// Skills CRUD & Tagging
+// ──────────────────────────────────────────────
+
+#[tauri::command]
+pub fn create_skill(state: State<'_, DbState>, input: CreateSkillInput) -> Result<Skill, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR IGNORE INTO skills (category, name) VALUES (?1, ?2)",
+        [&input.category, &input.name],
+    ).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn.prepare("SELECT id, category, name FROM skills WHERE category = ?1 AND name = ?2").map_err(|e| e.to_string())?;
+    let skill = stmt.query_row([&input.category, &input.name], |row| {
+        Ok(Skill {
+            id: row.get(0)?,
+            category: row.get(1)?,
+            name: row.get(2)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    Ok(skill)
+}
+
+#[tauri::command]
+pub fn list_skills(state: State<'_, DbState>) -> Result<Vec<Skill>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id, category, name FROM skills ORDER BY category ASC, name ASC").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Skill {
+            id: row.get(0)?,
+            category: row.get(1)?,
+            name: row.get(2)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let skills: Vec<Skill> = rows.filter_map(|r| r.ok()).collect();
+    Ok(skills)
+}
+
+#[tauri::command]
+pub fn delete_skill(state: State<'_, DbState>, id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM skills WHERE id = ?1", [id]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn tag_skill(state: State<'_, DbState>, archetype_id: i64, skill_id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR IGNORE INTO archetype_skills (archetype_id, skill_id) VALUES (?1, ?2)",
+        [archetype_id, skill_id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn untag_skill(state: State<'_, DbState>, archetype_id: i64, skill_id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM archetype_skills WHERE archetype_id = ?1 AND skill_id = ?2",
+        [archetype_id, skill_id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_archetype_skills(state: State<'_, DbState>, archetype_id: i64) -> Result<Vec<Skill>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("
+        SELECT s.id, s.category, s.name 
+        FROM skills s 
+        JOIN archetype_skills as_k ON s.id = as_k.skill_id 
+        WHERE as_k.archetype_id = ?1
+        ORDER BY s.category ASC, s.name ASC
+    ").map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([archetype_id], |row| {
+        Ok(Skill {
+            id: row.get(0)?,
+            category: row.get(1)?,
+            name: row.get(2)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let skills: Vec<Skill> = rows.filter_map(|r| r.ok()).collect();
+    Ok(skills)
+}

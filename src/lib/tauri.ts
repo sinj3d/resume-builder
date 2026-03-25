@@ -32,6 +32,17 @@ export interface Archetype {
   name: string;
 }
 
+export interface Skill {
+  id: number;
+  category: string;
+  name: string;
+}
+
+export interface CreateSkillInput {
+  category: string;
+  name: string;
+}
+
 export interface ScoredBullet {
   bullet: BulletPoint;
   score: number;
@@ -94,6 +105,25 @@ export const untagBullet = (archetype_id: number, bullet_point_id: number) =>
 export const getArchetypeBullets = (archetype_id: number) =>
   invoke<BulletPoint[]>('get_archetype_bullets', { archetypeId: archetype_id });
 
+export const tagExperience = (archetype_id: number, experience_id: number) =>
+  invoke('tag_experience', { archetypeId: archetype_id, experienceId: experience_id });
+export const untagExperience = (archetype_id: number, experience_id: number) =>
+  invoke('untag_experience', { archetypeId: archetype_id, experienceId: experience_id });
+export const getArchetypeExperiences = (archetype_id: number) =>
+  invoke<Experience[]>('get_archetype_experiences', { archetypeId: archetype_id });
+
+// Skills CRUD & Tagging
+export const createSkill = (category: string, name: string) =>
+  invoke<Skill>('create_skill', { input: { category, name } });
+export const listSkills = () => invoke<Skill[]>('list_skills');
+export const deleteSkill = (id: number) => invoke('delete_skill', { id });
+export const tagSkill = (archetype_id: number, skill_id: number) =>
+  invoke('tag_skill', { archetypeId: archetype_id, skillId: skill_id });
+export const untagSkill = (archetype_id: number, skill_id: number) =>
+  invoke('untag_skill', { archetypeId: archetype_id, skillId: skill_id });
+export const getArchetypeSkills = (archetype_id: number) =>
+  invoke<Skill[]>('get_archetype_skills', { archetypeId: archetype_id });
+
 // RAG Commands
 export const searchSimilar = (job_description: string, archetype_id: number, top_k: number) =>
   invoke<ScoredBullet[]>('search_similar', { jobDescription: job_description, archetypeId: archetype_id, topK: top_k });
@@ -111,5 +141,10 @@ export const extractResumePdf = (pdf_path: string) =>
 export const getTemplates = () => invoke<string[]>('get_templates');
 export const compileTex = (source: string) => invoke<number[]>('compile_tex', { source });
 export const getDefaultTemplate = () => invoke<string>('get_default_template');
-export const injectAndCompile = (archetype_id: number, bullet_ids: number[], template_idx: number) =>
-  invoke<number[]>('inject_and_compile', { archetypeId: archetype_id, bulletIds: bullet_ids, templateIdx: template_idx });
+export const injectTemplate = (archetype_id: number, template_idx: number, target_pages: number, section_order: string[]) =>
+  invoke<string>('inject_template', { archetypeId: archetype_id, templateIdx: template_idx, targetPages: target_pages, sectionOrder: section_order });
+export const getArchetypeSections = (archetype_id: number) =>
+  invoke<string[]>('get_archetype_sections', { archetypeId: archetype_id });
+export const savePdf = (path: string, data: number[]) =>
+  invoke<void>('save_pdf', { path, data });
+
