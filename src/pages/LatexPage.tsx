@@ -13,8 +13,12 @@ import {
 } from 'lucide-react';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+// Self-host the pdf.js worker (bundled by Vite) so the preview works fully
+// offline — no unpkg/CDN dependency. Importing it from the same pdfjs-dist that
+// react-pdf uses guarantees the worker and API versions match.
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const DEFAULT_SECTION_ORDER = [
     'Education',

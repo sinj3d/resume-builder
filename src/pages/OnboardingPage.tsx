@@ -78,7 +78,7 @@ export default function OnboardingPage() {
                     Import Your Resume
                 </h1>
                 <p className="text-slate-500 dark:text-slate-400">
-                    We'll extract your experiences automatically using Gemini AI so you don't have to type them all out.
+                    We'll extract your experiences automatically with an on-device AI model — fully offline, no account or API key required.
                 </p>
             </div>
 
@@ -113,7 +113,7 @@ export default function OnboardingPage() {
                     <div>
                         <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">Select your PDF Resume</h3>
                         <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-sm mx-auto text-sm">
-                            Make sure you've set up your Gemini API key in the settings first.
+                            Parsing runs entirely on your device. The first import downloads a small AI model (~1&nbsp;GB), so it may take a few minutes; every import after that is instant and offline.
                         </p>
                     </div>
 
@@ -133,6 +133,12 @@ export default function OnboardingPage() {
                             >
                                 {loading ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : 'Extract Experiences'}
                             </button>
+                        )}
+
+                        {loading && (
+                            <p className="text-xs text-slate-400 text-center -mt-1">
+                                Running the on-device parser. If this is your first import, the model is downloading (~1&nbsp;GB) — this can take a few minutes.
+                            </p>
                         )}
                     </div>
                 </div>

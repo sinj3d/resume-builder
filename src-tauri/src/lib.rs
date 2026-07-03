@@ -87,6 +87,7 @@ pub fn run() {
             llm::commands::get_llm_settings,
             llm::commands::update_llm_settings,
             llm::commands::extract_resume_pdf,
+            llm::commands::check_or_download_parser_model,
             // LaTeX
             latex::commands::check_or_download_tectonic,
             latex::commands::compile_tex,

@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::db::DbState;
 use crate::llm::{LlmState, LlmSettings};
@@ -139,6 +139,12 @@ pub fn get_llm_settings(
 }
 
 /// Update LLM settings and persist them.
+///
+/// Note: `get_llm_settings` returns a *masked* API key, so the frontend never
+/// echoes the real key back. An empty/absent `api_key` here therefore means
+/// "leave the stored key unchanged" rather than "delete it" — otherwise a routine
+/// settings save would wipe (or corrupt with the mask) a previously saved key.
+/// Likewise, an absent `cloud_model` preserves the current one.
 #[tauri::command]
 pub fn update_llm_settings(
     db_state: State<'_, DbState>,
@@ -148,74 +154,78 @@ pub fn update_llm_settings(
     api_key: Option<String>,
     cloud_model: Option<String>,
 ) -> Result<(), String> {
-    let new_settings = LlmSettings {
+    let mut settings = llm_state.0.lock().map_err(|e| e.to_string())?;
+
+    let merged = LlmSettings {
         mode,
         gguf_path,
-        api_key,
-        cloud_model,
+        api_key: match api_key {
+            Some(k) if !k.is_empty() => Some(k),
+            _ => settings.api_key.clone(),
+        },
+        cloud_model: cloud_model.or_else(|| settings.cloud_model.clone()),
     };
 
     // Persist to DB
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
-    crate::llm::save_settings(&conn, &new_settings)?;
+    {
+        let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+        crate::llm::save_settings(&conn, &merged)?;
+    }
 
     // Update in-memory state
-    let mut settings = llm_state.0.lock().map_err(|e| e.to_string())?;
-    *settings = new_settings;
+    *settings = merged;
 
     Ok(())
 }
 
-/// Extract resume text from a PDF and parse it into structured JSON experiences using the Cloud LLM.
+/// Ensure the specialized local parser model is downloaded. Safe to call ahead of
+/// time (e.g. from the onboarding screen) so the first import isn't blocked on a
+/// ~1 GB download. No-op if the model already exists.
+#[tauri::command]
+pub async fn check_or_download_parser_model(app: AppHandle) -> Result<(), String> {
+    crate::llm::model::ensure_parser_model(&app).await.map(|_| ())
+}
+
+/// Extract resume text from a PDF and parse it into structured JSON experiences.
+///
+/// This is **local-only** and fully offline after the first run: it downloads a
+/// small specialized parser model on first use, then runs it on-device. It never
+/// contacts a cloud provider, regardless of the configured LLM mode. The returned
+/// string is already clean, validated JSON (`{ "experiences": [...] }`).
 #[tauri::command]
 pub async fn extract_resume_pdf(
-    llm_state: State<'_, LlmState>,
+    app: AppHandle,
     pdf_path: String,
 ) -> Result<String, String> {
-    let settings = {
-        llm_state.0.lock().map_err(|e| e.to_string())?.clone()
-    };
-
-    let key = settings
-        .api_key
-        .as_deref()
-        .ok_or("No API key configured. You must set a Cloud API Key in Settings for PDF parsing.")?;
-    
-    let model_name = settings
-        .cloud_model
-        .as_deref()
-        .unwrap_or("gemini-2.5-flash");
-
-    // Extract text from PDF
+    // 1. Extract text from the PDF.
     let text = pdf_extract::extract_text(&pdf_path)
         .map_err(|e| format!("Failed to read PDF text: {}", e))?;
+    if text.trim().is_empty() {
+        return Err(
+            "No text could be extracted from this PDF. It may be a scanned or image-only document."
+                .to_string(),
+        );
+    }
 
-    let prompt = format!(
-        "System: You are an expert Applicant Tracking System (ATS). Parse the following resume text into a strict JSON payload. Return ONLY raw JSON, no markdown formatting blocks like ```json.
-The JSON must follow this exact exact schema:
-{{
-  \"experiences\": [
-    {{
-      \"title\": \"Role Title\",
-      \"org\": \"Organization/Company\",
-      \"start_date\": \"String (e.g. Jan 2020)\",
-      \"end_date\": \"String (e.g. Present)\",
-      \"category\": \"String (Work, Project, Education)\",
-      \"bullets\": [
-        \"Accomplishment 1\",
-        \"Accomplishment 2\"
-      ]
-    }}
-  ]
-}}
+    // 2. Ensure the specialized local parser model is available (downloads once).
+    let model_path = crate::llm::model::ensure_parser_model(&app).await?;
+    let model_path_str = model_path
+        .to_str()
+        .ok_or("Parser model path is not valid UTF-8.")?
+        .to_string();
 
-Resume Text:
-{}
-",
-        text
-    );
+    // 3. Run the model. llama-cpp is synchronous and CPU-heavy, so run it on a
+    //    blocking thread to keep the async runtime responsive.
+    let prompt = crate::llm::parse::build_parse_prompt(&text);
+    let raw = tauri::async_runtime::spawn_blocking(move || {
+        crate::llm::generate_local_parse(&prompt, &model_path_str)
+    })
+    .await
+    .map_err(|e| format!("Parser task failed to run: {}", e))??;
 
-    crate::llm::generate_cloud(&prompt, key, model_name)
-        .await
-        .map_err(|e| format!("Cloud parsing failed: {}", e))
+    // 4. Recover and validate clean JSON from the model output.
+    let json = crate::llm::parse::extract_json_object(&raw)?;
+    crate::llm::parse::validate_experiences(&json)?;
+
+    Ok(json)
 }

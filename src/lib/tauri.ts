@@ -50,8 +50,9 @@ export interface ScoredBullet {
 
 export interface LLMSettings {
   mode: string;
-  model_path?: string;
+  gguf_path?: string;
   api_key?: string;
+  cloud_model?: string;
 }
 
 export interface GenerationResult {
@@ -132,10 +133,15 @@ export const searchSimilar = (job_description: string, archetype_id: number, top
 export const generateCoverLetter = (jd: string, archetype_id: number, top_k: number) =>
   invoke<GenerationResult>('generate_cover_letter', { jobDescription: jd, archetypeId: archetype_id, topK: top_k });
 export const getLlmSettings = () => invoke<LLMSettings>('get_llm_settings');
-export const updateLlmSettings = (mode: string, path?: string, key?: string) =>
-  invoke('update_llm_settings', { mode, ggufPath: path, apiKey: key });
+export const updateLlmSettings = (mode: string, ggufPath?: string, apiKey?: string, cloudModel?: string) =>
+  invoke('update_llm_settings', { mode, ggufPath, apiKey, cloudModel });
+// Resume parsing is local-only: this downloads a small specialized model on first
+// use, then runs fully offline. Returns clean, validated `{ experiences: [...] }` JSON.
 export const extractResumePdf = (pdf_path: string) =>
   invoke<string>('extract_resume_pdf', { pdfPath: pdf_path });
+// Pre-download the local parser model (safe to call ahead of the first import).
+export const checkOrDownloadParserModel = () =>
+  invoke<void>('check_or_download_parser_model');
 
 // LaTeX Commands
 export const getTemplates = () => invoke<string[]>('get_templates');

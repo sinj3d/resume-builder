@@ -1,4 +1,6 @@
 pub mod commands;
+pub mod model;
+pub mod parse;
 pub mod prompt;
 
 use serde::{Deserialize, Serialize};
@@ -85,10 +87,21 @@ pub async fn generate_cloud(
     Ok(text.to_string())
 }
 
-/// Generate text using a local GGUF model via llama-cpp-2.
-/// This is only available when compiled with the `local-llm` feature.
+/// Run a local GGUF model via llama-cpp-2 with greedy decoding.
+///
+/// Shared by cover-letter generation and resume parsing. The context is sized to
+/// hold the prompt plus `max_tokens` of output, so long resumes don't overflow.
+/// `add_bos` controls whether a BOS token is prepended (chat models using ChatML,
+/// like the parser model, don't want one).
+///
+/// Only available when compiled with the `local-llm` feature.
 #[cfg(feature = "local-llm")]
-pub fn generate_local(prompt: &str, gguf_path: &str) -> Result<String, String> {
+fn run_local_generation(
+    prompt: &str,
+    gguf_path: &str,
+    max_tokens: i32,
+    add_bos: bool,
+) -> Result<String, String> {
     use llama_cpp_2::llama_backend::LlamaBackend;
     use llama_cpp_2::model::LlamaModel;
     use llama_cpp_2::model::params::LlamaModelParams;
@@ -108,18 +121,27 @@ pub fn generate_local(prompt: &str, gguf_path: &str) -> Result<String, String> {
     let model = LlamaModel::load_from_file(&backend, gguf_path, &model_params)
         .map_err(|e| format!("Failed to load GGUF model: {}", e))?;
 
-    // Create context
+    // Tokenize the prompt first so we can size the context to fit prompt + output.
+    let bos = if add_bos { AddBos::Always } else { AddBos::Never };
+    let tokens = model.str_to_token(prompt, bos)
+        .map_err(|e| format!("Tokenization failed: {}", e))?;
+
+    // Context large enough for the prompt plus the requested generation budget,
+    // clamped to a sane range.
+    let needed = tokens.len() as u32 + max_tokens as u32 + 16;
+    let n_ctx = needed.clamp(2048, 8192);
     let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(Some(NonZeroU32::new(2048).unwrap()));
+        .with_n_ctx(Some(NonZeroU32::new(n_ctx).unwrap()));
     let mut ctx = model.new_context(&backend, ctx_params)
         .map_err(|e| format!("Failed to create context: {}", e))?;
 
-    // Tokenize the prompt
-    let tokens = model.str_to_token(prompt, AddBos::Always)
-        .map_err(|e| format!("Tokenization failed: {}", e))?;
+    if tokens.is_empty() {
+        return Err("Prompt tokenized to zero tokens.".to_string());
+    }
 
     // Create batch and evaluate prompt tokens
-    let mut batch = LlamaBatch::new(2048, 1);
+    let batch_cap = (tokens.len() + 1).max(512);
+    let mut batch = LlamaBatch::new(batch_cap, 1);
     let last_index = (tokens.len() - 1) as i32;
     for (i, token) in (0i32..).zip(tokens.iter().copied()) {
         let is_last = i == last_index;
@@ -130,7 +152,7 @@ pub fn generate_local(prompt: &str, gguf_path: &str) -> Result<String, String> {
     ctx.decode(&mut batch)
         .map_err(|e| format!("Initial decode failed: {}", e))?;
 
-    // Set up sampler (greedy decoding)
+    // Set up sampler (greedy decoding for deterministic output)
     let mut sampler = LlamaSampler::chain_simple([
         LlamaSampler::dist(1234),
         LlamaSampler::greedy(),
@@ -139,7 +161,6 @@ pub fn generate_local(prompt: &str, gguf_path: &str) -> Result<String, String> {
     // Generate tokens
     let mut output = String::new();
     let mut n_cur = batch.n_tokens();
-    let max_tokens = 1024i32;
     let mut decoder = encoding_rs::UTF_8.new_decoder();
 
     for _ in 0..max_tokens {
@@ -167,10 +188,29 @@ pub fn generate_local(prompt: &str, gguf_path: &str) -> Result<String, String> {
     Ok(output)
 }
 
-/// Stub for when local-llm feature is not enabled.
+/// Generate a cover letter with a user-supplied local GGUF model.
+#[cfg(feature = "local-llm")]
+pub fn generate_local(prompt: &str, gguf_path: &str) -> Result<String, String> {
+    run_local_generation(prompt, gguf_path, 1024, true)
+}
+
+/// Parse a resume with the specialized, auto-downloaded parser model.
+/// Uses a larger output budget and ChatML (no BOS) since the model is a chat model.
+#[cfg(feature = "local-llm")]
+pub fn generate_local_parse(prompt: &str, gguf_path: &str) -> Result<String, String> {
+    run_local_generation(prompt, gguf_path, 2048, false)
+}
+
+/// Stub for when the local-llm feature is not enabled.
 #[cfg(not(feature = "local-llm"))]
 pub fn generate_local(_prompt: &str, _gguf_path: &str) -> Result<String, String> {
     Err("Local LLM support is not enabled. Recompile with `--features local-llm` (requires cmake).".to_string())
+}
+
+/// Stub for when the local-llm feature is not enabled.
+#[cfg(not(feature = "local-llm"))]
+pub fn generate_local_parse(_prompt: &str, _gguf_path: &str) -> Result<String, String> {
+    Err("Local resume parsing requires the app to be built with the `local-llm` feature (requires cmake).".to_string())
 }
 
 /// Load LLM settings from the database, or return defaults.
