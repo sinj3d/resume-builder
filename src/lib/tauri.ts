@@ -77,11 +77,11 @@ export const updateExperience = (id: number, title: string, org: string, start_d
   invoke('update_experience', { 
     input: { 
       id, 
-      title: title || null, 
-      org: org || null, 
-      startDate: start_date || null, 
-      endDate: end_date || null, 
-      category: category || null 
+      title: title || null,
+      org: org || null,
+      start_date: start_date || null,
+      end_date: end_date || null,
+      category: category || null
     } 
   });
 export const deleteExperience = (id: number) => invoke('delete_experience', { id });
@@ -143,14 +143,78 @@ export const extractResumePdf = (pdf_path: string) =>
 export const checkOrDownloadParserModel = () =>
   invoke<void>('check_or_download_parser_model');
 
-// LaTeX Commands
-export const getTemplates = () => invoke<string[]>('get_templates');
+// LaTeX / Layout Commands
+
+/// Mirrors `LayoutConfig` in src-tauri/src/latex/layout.rs (snake_case fields
+/// match serde exactly).
+export interface LayoutConfig {
+  body_font_pt: number;
+  bullet_font_pt: number;
+  section_font_pt: number;
+  subsection_font_pt: number;
+  name_font_pt: number;
+  margin_h_in: number;
+  margin_v_in: number;
+  bullet_indent_pt: number;
+  item_sep_pt: number;
+  experience_gap_pt: number;
+  section_gap_pt: number;
+  line_spacing: number;
+  accent_rgb: [number, number, number];
+  heading_sans: boolean;
+  section_rule: boolean;
+  target_pages: number;
+}
+
+/// A named resume section mapping to one or more experience categories.
+export interface SectionDef {
+  id: string;
+  heading: string;
+  categories: string[];
+}
+
+export interface LayoutPreset {
+  name: string;
+  config: LayoutConfig;
+}
+
+export interface ResumeConfigRow {
+  layout_json: string | null;
+  sections_json: string | null;
+}
+
+export interface EducationDetails {
+  experience_id: number;
+  degree?: string | null;
+  gpa?: string | null;
+  coursework?: string | null;
+  honors?: string | null;
+}
+
+export const getLayoutPresets = () => invoke<LayoutPreset[]>('get_layout_presets');
 export const compileTex = (source: string) => invoke<number[]>('compile_tex', { source });
 export const getDefaultTemplate = () => invoke<string>('get_default_template');
-export const injectTemplate = (archetype_id: number, template_idx: number, target_pages: number, section_order: string[]) =>
-  invoke<string>('inject_template', { archetypeId: archetype_id, templateIdx: template_idx, targetPages: target_pages, sectionOrder: section_order });
-export const getArchetypeSections = (archetype_id: number) =>
-  invoke<string[]>('get_archetype_sections', { archetypeId: archetype_id });
+export const injectTemplate = (archetype_id: number, layout: LayoutConfig, sections: SectionDef[] | null) =>
+  invoke<string>('inject_template', { archetypeId: archetype_id, layout, sections });
+export const getArchetypeCategories = (archetype_id: number) =>
+  invoke<string[]>('get_archetype_categories', { archetypeId: archetype_id });
 export const savePdf = (path: string, data: number[]) =>
   invoke<void>('save_pdf', { path, data });
+
+export const getResumeConfig = (archetype_id: number) =>
+  invoke<ResumeConfigRow | null>('get_resume_config', { archetypeId: archetype_id });
+export const saveResumeConfig = (archetype_id: number, layout: LayoutConfig, sections: SectionDef[]) =>
+  invoke<void>('save_resume_config', {
+    archetypeId: archetype_id,
+    layoutJson: JSON.stringify(layout),
+    sectionsJson: JSON.stringify(sections),
+  });
+
+// Education details
+export const getEducationDetails = (experience_id: number) =>
+  invoke<EducationDetails | null>('get_education_details', { experienceId: experience_id });
+export const upsertEducationDetails = (input: EducationDetails) =>
+  invoke<void>('upsert_education_details', { input });
+export const deleteEducationDetails = (experience_id: number) =>
+  invoke<void>('delete_education_details', { experienceId: experience_id });
 

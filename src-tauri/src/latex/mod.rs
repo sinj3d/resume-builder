@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod download;
+pub mod layout;
 pub mod template;
 
 use std::env;
@@ -32,7 +33,10 @@ pub fn compile_latex(tex_source: &str, binary_path: &Path) -> std::result::Resul
     if !output.status.success() {
         let stdout_str = String::from_utf8_lossy(&output.stdout);
         let stderr_str = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Tectonic reported a LaTeX error during compilation.\nStdout:\n{}\nStderr:\n{}", stdout_str, stderr_str));
+        return Err(format!(
+            "Tectonic reported a LaTeX error during compilation ({}).\nStdout:\n{}\nStderr:\n{}",
+            output.status, stdout_str, stderr_str
+        ));
     }
 
     // The output should be resume.pdf

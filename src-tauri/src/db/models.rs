@@ -66,6 +66,26 @@ pub struct UpdateExperienceInput {
     pub category: Option<String>,
 }
 
+/// Structured details for an education-type experience (all optional).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EducationDetails {
+    pub experience_id: i64,
+    pub degree: Option<String>,
+    pub gpa: Option<String>,
+    pub coursework: Option<String>,
+    pub honors: Option<String>,
+}
+
+/// Input payload for creating/updating education details.
+#[derive(Debug, Deserialize)]
+pub struct UpsertEducationDetailsInput {
+    pub experience_id: i64,
+    pub degree: Option<String>,
+    pub gpa: Option<String>,
+    pub coursework: Option<String>,
+    pub honors: Option<String>,
+}
+
 /// Biographical information for the resume header.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bio {

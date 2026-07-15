@@ -101,6 +101,21 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             website  TEXT
         );
         INSERT OR IGNORE INTO bio (id) VALUES (1);
+
+        CREATE TABLE IF NOT EXISTS education_details (
+            experience_id INTEGER PRIMARY KEY REFERENCES experiences(id) ON DELETE CASCADE,
+            degree     TEXT,
+            gpa        TEXT,
+            coursework TEXT,
+            honors     TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS resume_configs (
+            archetype_id  INTEGER PRIMARY KEY REFERENCES archetypes(id) ON DELETE CASCADE,
+            layout_json   TEXT,
+            sections_json TEXT,
+            updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         "
     )?;
 

@@ -589,9 +589,9 @@ pub fn untag_skill(state: State<'_, DbState>, archetype_id: i64, skill_id: i64) 
 pub fn get_archetype_skills(state: State<'_, DbState>, archetype_id: i64) -> Result<Vec<Skill>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare("
-        SELECT s.id, s.category, s.name 
-        FROM skills s 
-        JOIN archetype_skills as_k ON s.id = as_k.skill_id 
+        SELECT s.id, s.category, s.name
+        FROM skills s
+        JOIN archetype_skills as_k ON s.id = as_k.skill_id
         WHERE as_k.archetype_id = ?1
         ORDER BY s.category ASC, s.name ASC
     ").map_err(|e| e.to_string())?;
@@ -606,4 +606,140 @@ pub fn get_archetype_skills(state: State<'_, DbState>, archetype_id: i64) -> Res
 
     let skills: Vec<Skill> = rows.filter_map(|r| r.ok()).collect();
     Ok(skills)
+}
+
+// ──────────────────────────────────────────────
+// Education Details
+// ──────────────────────────────────────────────
+
+/// Get the structured education details for an experience, if any.
+#[tauri::command]
+pub fn get_education_details(
+    state: State<'_, DbState>,
+    experience_id: i64,
+) -> Result<Option<EducationDetails>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    let details = conn
+        .query_row(
+            "SELECT experience_id, degree, gpa, coursework, honors
+             FROM education_details WHERE experience_id = ?1",
+            [experience_id],
+            |row| {
+                Ok(EducationDetails {
+                    experience_id: row.get(0)?,
+                    degree: row.get(1)?,
+                    gpa: row.get(2)?,
+                    coursework: row.get(3)?,
+                    honors: row.get(4)?,
+                })
+            },
+        )
+        .ok();
+
+    Ok(details)
+}
+
+/// Create or replace the education details for an experience.
+#[tauri::command]
+pub fn upsert_education_details(
+    state: State<'_, DbState>,
+    input: UpsertEducationDetailsInput,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO education_details (experience_id, degree, gpa, coursework, honors)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(experience_id) DO UPDATE SET
+             degree = excluded.degree,
+             gpa = excluded.gpa,
+             coursework = excluded.coursework,
+             honors = excluded.honors",
+        rusqlite::params![
+            input.experience_id,
+            input.degree,
+            input.gpa,
+            input.coursework,
+            input.honors
+        ],
+    )
+    .map_err(|e| format!("Failed to save education details: {}", e))?;
+
+    Ok(())
+}
+
+/// Remove the education details for an experience.
+#[tauri::command]
+pub fn delete_education_details(
+    state: State<'_, DbState>,
+    experience_id: i64,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM education_details WHERE experience_id = ?1",
+        [experience_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ──────────────────────────────────────────────
+// Resume Config (per-archetype layout + sections)
+// ──────────────────────────────────────────────
+
+/// Saved per-archetype resume configuration (raw JSON blobs).
+#[derive(serde::Serialize)]
+pub struct ResumeConfigRow {
+    pub layout_json: Option<String>,
+    pub sections_json: Option<String>,
+}
+
+/// Get the saved layout/sections config for an archetype, if any.
+/// The JSON blobs are returned raw; the frontend deserializes them.
+#[tauri::command]
+pub fn get_resume_config(
+    state: State<'_, DbState>,
+    archetype_id: i64,
+) -> Result<Option<ResumeConfigRow>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    let row = conn
+        .query_row(
+            "SELECT layout_json, sections_json FROM resume_configs WHERE archetype_id = ?1",
+            [archetype_id],
+            |row| {
+                Ok(ResumeConfigRow {
+                    layout_json: row.get(0)?,
+                    sections_json: row.get(1)?,
+                })
+            },
+        )
+        .ok();
+
+    Ok(row)
+}
+
+/// Save (upsert) the layout/sections config for an archetype.
+#[tauri::command]
+pub fn save_resume_config(
+    state: State<'_, DbState>,
+    archetype_id: i64,
+    layout_json: Option<String>,
+    sections_json: Option<String>,
+) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO resume_configs (archetype_id, layout_json, sections_json, updated_at)
+         VALUES (?1, ?2, ?3, datetime('now'))
+         ON CONFLICT(archetype_id) DO UPDATE SET
+             layout_json = excluded.layout_json,
+             sections_json = excluded.sections_json,
+             updated_at = excluded.updated_at",
+        rusqlite::params![archetype_id, layout_json, sections_json],
+    )
+    .map_err(|e| format!("Failed to save resume config: {}", e))?;
+
+    Ok(())
 }

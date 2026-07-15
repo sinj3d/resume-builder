@@ -78,6 +78,13 @@ pub fn run() {
             // Bio
             db::commands::get_bio,
             db::commands::update_bio,
+            // Education details
+            db::commands::get_education_details,
+            db::commands::upsert_education_details,
+            db::commands::delete_education_details,
+            // Resume config (per-archetype layout + sections)
+            db::commands::get_resume_config,
+            db::commands::save_resume_config,
             // RAG / Embeddings
             rag::commands::embed_bullet,
             rag::commands::embed_all_bullets,
@@ -91,10 +98,10 @@ pub fn run() {
             // LaTeX
             latex::commands::check_or_download_tectonic,
             latex::commands::compile_tex,
-            latex::commands::get_templates,
+            latex::commands::get_layout_presets,
             latex::commands::get_default_template,
             latex::commands::inject_template,
-            latex::commands::get_archetype_sections,
+            latex::commands::get_archetype_categories,
             latex::commands::save_pdf,
         ])
         .run(tauri::generate_context!())

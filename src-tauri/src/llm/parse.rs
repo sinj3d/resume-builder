@@ -24,7 +24,7 @@ const PARSE_INSTRUCTIONS: &str = r#"Parse the resume text below into a single JS
       "org": "company / organization / school (empty string if none)",
       "start_date": "e.g. Jan 2020 (empty string if none)",
       "end_date": "e.g. Present (empty string if none)",
-      "category": "one of: Work, Project, Education",
+      "category": "one of: Work, Project, Education, Competition, Leadership, Volunteer",
       "bullets": ["one accomplishment or responsibility per string"]
     }
   ]
@@ -32,7 +32,14 @@ const PARSE_INSTRUCTIONS: &str = r#"Parse the resume text below into a single JS
 Rules:
 - Group each role, project, or degree into its own experience object.
 - Put each accomplishment or responsibility as a separate string in "bullets".
-- Use "Work" for jobs and internships, "Education" for degrees and schools, and "Project" for personal or side projects.
+- Choose the category carefully for every experience:
+  - "Work": paid jobs, internships, co-ops, research positions.
+  - "Education": degrees, schools, universities, bootcamps.
+  - "Project": personal or side projects, coursework projects.
+  - "Competition": hackathons, contests, olympiads, competitive events.
+  - "Leadership": club officer roles, team lead or mentoring positions.
+  - "Volunteer": unpaid community or charity work.
+- Use the resume's own section headings (e.g. "Projects", "Competitions") as the strongest hint for the category.
 - Only use information that appears in the resume text.
 - Output only the JSON object.
 

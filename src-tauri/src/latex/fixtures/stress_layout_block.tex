@@ -1,0 +1,32 @@
+% === LAYOUT:BEGIN (auto-generated - edits inside are overwritten by layout controls) ===
+\usepackage[hmargin=0.85in,vmargin=0.60in]{geometry}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\pagestyle{empty}
+
+\definecolor{accent}{RGB}{10, 200, 30}
+
+\makeatletter
+\renewcommand\normalsize{\@setfontsize\normalsize{10.5pt}{14.5pt}}
+\makeatother
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1.5pt}
+
+\titleformat{\section}
+  {\normalfont\fontsize{16.5pt}{19.8pt}\selectfont\sffamily\bfseries\color{accent}}
+  {}{0pt}{}[\color{accent}\titlerule]
+\titleformat{\subsection}
+  {\normalfont\fontsize{11.5pt}{13.8pt}\selectfont\sffamily\bfseries}
+  {}{0pt}{}
+
+\titlespacing*{\section}{0pt}{13.5pt}{8.1pt}
+\titlespacing*{\subsection}{0pt}{4.5pt}{1.0pt}
+
+\newcommand{\bulletsize}{\fontsize{9.5pt}{13.1pt}\selectfont}
+\setlist[itemize]{leftmargin=22.0pt, itemsep=1.5pt, topsep=2.0pt, parsep=0.0pt, partopsep=0.0pt, before=\bulletsize}
+
+\newcommand{\namesize}{\fontsize{27.0pt}{32.4pt}\selectfont}
+\newcommand{\expvspace}{\vspace{2.3pt}}
+% === LAYOUT:END ===

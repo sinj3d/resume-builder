@@ -4,6 +4,8 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { UploadCloud, FileText, CheckCircle2, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+const CATEGORY_OPTIONS = ['Professional Experience', 'Education', 'Project', 'Competition', 'Leadership', 'Volunteer'];
+
 export default function OnboardingPage() {
     const navigate = useNavigate();
     const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -47,6 +49,16 @@ export default function OnboardingPage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const setExpCategory = (idx: number, category: string) => {
+        setParsedData(prev => {
+            if (!prev) return prev;
+            const experiences = prev.experiences.map((exp, i) =>
+                i === idx ? { ...exp, category } : exp
+            );
+            return { ...prev, experiences };
+        });
     };
 
     const handleCommit = async () => {
@@ -167,9 +179,28 @@ export default function OnboardingPage() {
                     <div className="flex flex-col gap-4 overflow-y-auto pr-2 pb-8">
                         {parsedData.experiences.map((exp, idx) => (
                             <div key={idx} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm">
-                                <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100">{exp.title} <span className="text-slate-500 font-normal">at {exp.org}</span></h4>
-                                <p className="text-sm text-slate-500 mb-4">{exp.start_date} - {exp.end_date} • {exp.category}</p>
-                                
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100">{exp.title} <span className="text-slate-500 font-normal">at {exp.org}</span></h4>
+                                        <p className="text-sm text-slate-500 mb-4">{exp.start_date} - {exp.end_date}</p>
+                                    </div>
+                                    <div className="flex flex-col gap-1 shrink-0">
+                                        <label className="text-xs font-semibold text-slate-500 uppercase">Category</label>
+                                        <select
+                                            className="px-3 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                            value={CATEGORY_OPTIONS.includes(exp.category) ? exp.category : exp.category || ''}
+                                            onChange={e => setExpCategory(idx, e.target.value)}
+                                        >
+                                            {!CATEGORY_OPTIONS.includes(exp.category) && exp.category && (
+                                                <option value={exp.category}>{exp.category}</option>
+                                            )}
+                                            {CATEGORY_OPTIONS.map(cat => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
                                 <ul className="flex flex-col gap-2">
                                     {exp.bullets.map((b, i) => (
                                         <li key={i} className="flex items-start gap-3 bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border border-slate-100 dark:border-slate-700/50">

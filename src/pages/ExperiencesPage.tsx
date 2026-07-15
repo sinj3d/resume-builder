@@ -1,9 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
-import { 
-    listExperiences, createExperience, deleteExperience, Experience, 
-    listBullets, createBullet, deleteBullet, updateBullet, BulletPoint 
+import {
+    listExperiences, createExperience, updateExperience, deleteExperience, Experience,
+    listBullets, createBullet, deleteBullet, updateBullet, BulletPoint,
+    getEducationDetails, upsertEducationDetails, deleteEducationDetails,
 } from '../lib/tauri';
-import { Plus, Trash2, ChevronDown, ChevronUp, Edit2, Check, CheckCircle2, Briefcase, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, Edit2, Check, CheckCircle2, Briefcase, ArrowLeft, GraduationCap } from 'lucide-react';
+
+/// Mirrors the education arm of `normalize_category` in latex/template.rs.
+const isEducationCategory = (cat: string) =>
+    ['education', 'school', 'academic'].includes(cat.trim().toLowerCase());
+
+const EMPTY_EDU_FORM = { degree: '', gpa: '', coursework: '', honors: '' };
 
 export default function ExperiencesPage() {
     const [experiences, setExperiences] = useState<Experience[]>([]);
@@ -15,10 +22,12 @@ export default function ExperiencesPage() {
     const [notification, setNotification] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    // Form state
+    // Form state (editingExp !== null means the form updates an existing experience)
+    const [editingExp, setEditingExp] = useState<Experience | null>(null);
     const [expForm, setExpForm] = useState({ title: '', org: '', start_date: '', end_date: '', category: '' });
     const [isCurrentJob, setIsCurrentJob] = useState(false);
     const [customCategory, setCustomCategory] = useState('');
+    const [eduForm, setEduForm] = useState(EMPTY_EDU_FORM);
     
     // Bullet state
     const [newBulletContent, setNewBulletContent] = useState('');
@@ -74,9 +83,47 @@ export default function ExperiencesPage() {
         }
     };
 
-    const handleCreateExp = async (e: React.FormEvent) => {
+    const resetForm = () => {
+        setExpForm({ title: '', org: '', start_date: '', end_date: '', category: '' });
+        setIsCurrentJob(false);
+        setCustomCategory('');
+        setEduForm(EMPTY_EDU_FORM);
+        setEditingExp(null);
+    };
+
+    const startEdit = (exp: Experience) => {
+        setEditingExp(exp);
+        const isPresent = (exp.end_date || '').toLowerCase() === 'present';
+        setExpForm({
+            title: exp.title,
+            org: exp.org || '',
+            start_date: exp.start_date || '',
+            end_date: isPresent ? '' : (exp.end_date || ''),
+            category: exp.category,
+        });
+        setIsCurrentJob(isPresent);
+        setCustomCategory('');
+        setEduForm(EMPTY_EDU_FORM);
+        if (isEducationCategory(exp.category)) {
+            getEducationDetails(exp.id)
+                .then(details => {
+                    if (details) {
+                        setEduForm({
+                            degree: details.degree || '',
+                            gpa: details.gpa || '',
+                            coursework: details.coursework || '',
+                            honors: details.honors || '',
+                        });
+                    }
+                })
+                .catch(console.error);
+        }
+        setView('create');
+    };
+
+    const handleSubmitExp = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         let finalCategory = expForm.category;
         if (finalCategory === 'Other') {
             finalCategory = customCategory;
@@ -88,17 +135,36 @@ export default function ExperiencesPage() {
         }
 
         try {
-            await createExperience(expForm.title, expForm.org, expForm.start_date, finalEndDate, finalCategory);
-            setExpForm({ title: '', org: '', start_date: '', end_date: '', category: '' });
-            setIsCurrentJob(false);
-            setCustomCategory('');
-            
+            let expId: number;
+            if (editingExp) {
+                await updateExperience(editingExp.id, expForm.title, expForm.org, expForm.start_date, finalEndDate, finalCategory);
+                expId = editingExp.id;
+                setNotification('Experience updated!');
+            } else {
+                const created = await createExperience(expForm.title, expForm.org, expForm.start_date, finalEndDate, finalCategory);
+                expId = created.id;
+                setNotification('Experience successfully added!');
+            }
+
+            if (isEducationCategory(finalCategory)) {
+                await upsertEducationDetails({
+                    experience_id: expId,
+                    degree: eduForm.degree || null,
+                    gpa: eduForm.gpa || null,
+                    coursework: eduForm.coursework || null,
+                    honors: eduForm.honors || null,
+                });
+            } else if (editingExp && isEducationCategory(editingExp.category)) {
+                // Category changed away from education: drop the stale details.
+                await deleteEducationDetails(expId);
+            }
+            resetForm();
+
             await loadExperiences();
-            setNotification('Experience successfully added!');
             setError(null);
             setView('list');
         } catch (err: any) {
-            console.error('Failed to create experience', err);
+            console.error('Failed to save experience', err);
             setError(typeof err === 'string' ? err : err.message || JSON.stringify(err));
         }
     };
@@ -157,15 +223,15 @@ export default function ExperiencesPage() {
                 </h1>
 
                 {view === 'list' ? (
-                    <button 
-                        onClick={() => setView('create')}
+                    <button
+                        onClick={() => { resetForm(); setView('create'); }}
                         className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors shadow-sm"
                     >
                         <Plus size={18} /> Add Experience
                     </button>
                 ) : (
-                    <button 
-                        onClick={() => setView('list')}
+                    <button
+                        onClick={() => { resetForm(); setView('list'); }}
                         className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg font-semibold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm"
                     >
                         <ArrowLeft size={18} /> Back to List
@@ -190,9 +256,11 @@ export default function ExperiencesPage() {
 
             {view === 'create' && (
                 <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm max-w-3xl animate-in fade-in zoom-in-95 duration-200">
-                    <h2 className="text-xl font-bold mb-6 text-slate-800 dark:text-slate-200">New Experience Details</h2>
-                    
-                    <form onSubmit={handleCreateExp} className="flex flex-col gap-5">
+                    <h2 className="text-xl font-bold mb-6 text-slate-800 dark:text-slate-200">
+                        {editingExp ? 'Edit Experience' : 'New Experience Details'}
+                    </h2>
+
+                    <form onSubmit={handleSubmitExp} className="flex flex-col gap-5">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Role Title</label>
@@ -266,19 +334,63 @@ export default function ExperiencesPage() {
 
                                     {expForm.category === 'Other' && (
                                         <input className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all animate-in fade-in slide-in-from-left-2"
-                                            placeholder="Enter custom category" 
-                                            value={customCategory} 
-                                            onChange={e => setCustomCategory(e.target.value)} 
-                                            required 
+                                            placeholder="Enter custom category"
+                                            value={customCategory}
+                                            onChange={e => setCustomCategory(e.target.value)}
+                                            required
                                         />
                                     )}
                                 </div>
                             </div>
+
+                            {/* Education-specific fields */}
+                            {isEducationCategory(expForm.category === 'Other' ? customCategory : expForm.category) && (
+                                <div className="md:col-span-2 flex flex-col gap-4 p-4 rounded-xl bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/40 animate-in fade-in slide-in-from-top-2">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                                        <GraduationCap size={16} /> Education Details <span className="font-normal text-slate-400 text-xs">(all optional)</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Degree &amp; Major</label>
+                                            <input className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                                placeholder="e.g. B.S. Computer Science"
+                                                value={eduForm.degree}
+                                                onChange={e => setEduForm({ ...eduForm, degree: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">GPA</label>
+                                            <input className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                                placeholder="e.g. 3.87/4.0"
+                                                value={eduForm.gpa}
+                                                onChange={e => setEduForm({ ...eduForm, gpa: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1.5 md:col-span-2">
+                                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Relevant Coursework</label>
+                                            <textarea className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-y min-h-[60px]"
+                                                placeholder="e.g. Algorithms, Operating Systems, Machine Learning"
+                                                value={eduForm.coursework}
+                                                onChange={e => setEduForm({ ...eduForm, coursework: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1.5 md:col-span-2">
+                                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Honors / Awards</label>
+                                            <input className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                                placeholder="e.g. Dean's List, magna cum laude"
+                                                value={eduForm.honors}
+                                                onChange={e => setEduForm({ ...eduForm, honors: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                        
+
                         <div className="flex justify-end mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
                             <button type="submit" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition-colors shadow-md">
-                                <Plus size={18} /> Save Experience
+                                {editingExp ? <Check size={18} /> : <Plus size={18} />}
+                                {editingExp ? 'Update Experience' : 'Save Experience'}
                             </button>
                         </div>
                     </form>
@@ -296,7 +408,9 @@ export default function ExperiencesPage() {
                         </div>
                     ) : (
                         experiences.map(exp => (
-                            <div key={exp.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all hover:shadow-md animate-in fade-in duration-300 slide-in-from-bottom-2">
+                            // shrink-0: without it the fixed-height flex column compresses
+                            // the (overflow-hidden) cards instead of letting the list scroll.
+                            <div key={exp.id} className="shrink-0 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all hover:shadow-md animate-in fade-in duration-300 slide-in-from-bottom-2">
                                 {/* Header */}
                                 <div 
                                     className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-750"
@@ -312,7 +426,14 @@ export default function ExperiencesPage() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <button 
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); startEdit(exp); }}
+                                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                                            title="Edit Experience"
+                                        >
+                                            <Edit2 size={18} />
+                                        </button>
+                                        <button
                                             onClick={(e) => { e.stopPropagation(); deleteExperience(exp.id).then(loadExperiences); }}
                                             className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                                             title="Delete Experience"
