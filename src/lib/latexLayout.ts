@@ -28,6 +28,7 @@ export const DEFAULT_LAYOUT: LayoutConfig = {
   accent_rgb: [128, 0, 0],
   heading_sans: false,
   section_rule: false,
+  header_rule: false,
   target_pages: 1,
 };
 
@@ -54,6 +55,9 @@ const inches = (x: number) => (Math.round(x * 100) / 100).toFixed(2);
 export function generateLayoutBlock(cfg: LayoutConfig): string {
   const sans = cfg.heading_sans ? '\\sffamily' : '';
   const rule = cfg.section_rule ? '[\\color{accent}\\titlerule]' : '';
+  const headerDivider = cfg.header_rule
+    ? '\\vspace{4pt}\\noindent{\\color{accent}\\rule{\\textwidth}{0.6pt}}'
+    : '';
   const [r, g, b] = cfg.accent_rgb;
 
   return String.raw`${LAYOUT_BEGIN}
@@ -86,6 +90,7 @@ export function generateLayoutBlock(cfg: LayoutConfig): string {
 \setlist[itemize]{leftmargin=${pt(cfg.bullet_indent_pt)}pt, itemsep=${pt(cfg.item_sep_pt)}pt, topsep=2.0pt, parsep=0.0pt, partopsep=0.0pt, before=\bulletsize}
 
 \newcommand{\namesize}{\fontsize{${pt(cfg.name_font_pt)}pt}{${pt(cfg.name_font_pt * 1.2)}pt}\selectfont}
+\newcommand{\headerdivider}{${headerDivider}}
 \newcommand{\expvspace}{\vspace{${pt(cfg.experience_gap_pt * 0.5)}pt}}
 ${LAYOUT_END}`;
 }

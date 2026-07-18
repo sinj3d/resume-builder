@@ -54,9 +54,9 @@ mod tests {
         template::inject_sections_by_category(
             &injected,
             &[
-                (
-                    "Professional Experience".to_string(),
-                    vec![template::ResumeEntry {
+                template::SectionGroup {
+                    heading: "Professional Experience".to_string(),
+                    entries: vec![template::ResumeEntry {
                         title: "Software Engineer".to_string(),
                         org: Some("Acme R&D".to_string()),
                         start: Some("Jan 2020".to_string()),
@@ -64,10 +64,10 @@ mod tests {
                         bullets: vec!["Cut costs by 50% using snake_case tools".to_string()],
                         education: None,
                     }],
-                ),
-                (
-                    "Education".to_string(),
-                    vec![template::ResumeEntry {
+                },
+                template::SectionGroup {
+                    heading: "Education".to_string(),
+                    entries: vec![template::ResumeEntry {
                         title: "B.S. Computer Science".to_string(),
                         org: Some("State University".to_string()),
                         start: Some("2022".to_string()),
@@ -81,7 +81,7 @@ mod tests {
                             honors: Some("Dean's List".to_string()),
                         }),
                     }],
-                ),
+                },
             ],
         )
     }
@@ -124,9 +124,9 @@ mod tests {
                 let doc = template::inject_skills_section(&doc, &[]);
                 let doc = template::inject_sections_by_category(
                     &doc,
-                    &[(
-                        "Projects".to_string(),
-                        vec![template::ResumeEntry {
+                    &[template::SectionGroup {
+                        heading: "Projects".to_string(),
+                        entries: vec![template::ResumeEntry {
                             title: "Thing".to_string(),
                             org: None,
                             start: None,
@@ -134,7 +134,7 @@ mod tests {
                             bullets: vec!["Did the thing".to_string()],
                             education: None,
                         }],
-                    )],
+                    }],
                 );
                 compile_latex(&doc, &binary_path)
                     .unwrap_or_else(|e| panic!("Preset must compile. Error: {}", e));

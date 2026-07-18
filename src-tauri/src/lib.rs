@@ -85,6 +85,14 @@ pub fn run() {
             // Resume config (per-archetype layout + sections)
             db::commands::get_resume_config,
             db::commands::save_resume_config,
+            // Cover letter history
+            db::commands::list_cover_letters,
+            db::commands::delete_cover_letter,
+            // Cover letter templates
+            db::commands::list_cover_letter_templates,
+            db::commands::create_cover_letter_template,
+            db::commands::update_cover_letter_template,
+            db::commands::delete_cover_letter_template,
             // RAG / Embeddings
             rag::commands::embed_bullet,
             rag::commands::embed_all_bullets,
@@ -101,6 +109,7 @@ pub fn run() {
             latex::commands::get_layout_presets,
             latex::commands::get_default_template,
             latex::commands::inject_template,
+            latex::commands::get_resume_data,
             latex::commands::get_archetype_categories,
             latex::commands::save_pdf,
         ])

@@ -5,8 +5,9 @@
 use crate::db::models::EducationDetails;
 
 /// One renderable resume entry (an experience with its bullets, plus optional
-/// structured education details).
-#[derive(Debug, Clone)]
+/// structured education details). Serialized as-is to the frontend for the
+/// HTML preview.
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ResumeEntry {
     pub title: String,
     pub org: Option<String>,
@@ -14,6 +15,14 @@ pub struct ResumeEntry {
     pub end: Option<String>,
     pub bullets: Vec<String>,
     pub education: Option<EducationDetails>,
+}
+
+/// A resume section ready to render: heading plus its entries in display
+/// order. Serialized to the frontend for the HTML preview.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SectionGroup {
+    pub heading: String,
+    pub entries: Vec<ResumeEntry>,
 }
 
 /// Escape characters that break LaTeX compilation when they appear in user
@@ -154,22 +163,18 @@ fn render_entry(output: &mut String, entry: &ResumeEntry) {
 
 /// Inject grouped experience sections into `% {INJECT_SECTIONS}`.
 ///
-/// `groups` is a slice of `(section_heading, entries)` already sorted in the
-/// desired display order.
-pub fn inject_sections_by_category(
-    template: &str,
-    groups: &[(String, Vec<ResumeEntry>)],
-) -> String {
+/// `groups` is already sorted in the desired display order.
+pub fn inject_sections_by_category(template: &str, groups: &[SectionGroup]) -> String {
     let mut output = String::new();
 
-    for (heading, entries) in groups {
-        if entries.is_empty() {
+    for group in groups {
+        if group.entries.is_empty() {
             continue;
         }
 
-        output.push_str(&format!("\\section*{{{}}}\n", escape_latex(heading)));
+        output.push_str(&format!("\\section*{{{}}}\n", escape_latex(&group.heading)));
 
-        for entry in entries {
+        for entry in &group.entries {
             render_entry(&mut output, entry);
         }
     }
@@ -217,7 +222,7 @@ pub fn inject_bio_header(template: &str, name: &str, details: &[String]) -> Stri
     if !joined.is_empty() {
         header.push_str(&format!("    {} \\\\\n", joined));
     }
-    header.push_str("\\end{center}\n\\vspace{10pt}");
+    header.push_str("\\end{center}\n\\headerdivider\n\\vspace{10pt}");
 
     template.replace("% {INJECT_BIO_HEADER}", &header)
 }
@@ -261,10 +266,10 @@ mod tests {
     fn test_inject_sections_headings_and_escaping() {
         let out = inject_sections_by_category(
             "% {INJECT_SECTIONS}",
-            &[(
-                "Projects & Competitions".to_string(),
-                vec![entry("Robot", Some("R&D Club"), vec!["Won 1st of 50%"])],
-            )],
+            &[SectionGroup {
+                heading: "Projects & Competitions".to_string(),
+                entries: vec![entry("Robot", Some("R&D Club"), vec!["Won 1st of 50%"])],
+            }],
         );
         assert!(out.contains("\\section*{Projects \\& Competitions}"));
         assert!(out.contains("Robot -- R\\&D Club"));
@@ -276,7 +281,7 @@ mod tests {
     fn test_inject_sections_skips_empty_groups() {
         let out = inject_sections_by_category(
             "% {INJECT_SECTIONS}",
-            &[("Empty".to_string(), vec![])],
+            &[SectionGroup { heading: "Empty".to_string(), entries: vec![] }],
         );
         assert!(!out.contains("\\section*{Empty}"));
     }
@@ -299,7 +304,7 @@ mod tests {
         };
         let out = inject_sections_by_category(
             "% {INJECT_SECTIONS}",
-            &[("Education".to_string(), vec![edu_entry])],
+            &[SectionGroup { heading: "Education".to_string(), entries: vec![edu_entry] }],
         );
         // Institution headlines the subsection; degree/GPA/coursework/honors follow.
         assert!(out.contains("\\subsection*{State University \\hfill 2022 -- 2026}"));
@@ -326,7 +331,7 @@ mod tests {
         };
         let out = inject_sections_by_category(
             "% {INJECT_SECTIONS}",
-            &[("Education".to_string(), vec![edu_entry])],
+            &[SectionGroup { heading: "Education".to_string(), entries: vec![edu_entry] }],
         );
         // Title falls back as the degree line; no GPA/coursework/honors lines.
         assert!(out.contains("B.S. CS \\par"));
@@ -336,8 +341,9 @@ mod tests {
     }
 
     #[test]
-    fn test_bio_header_uses_namesize() {
+    fn test_bio_header_uses_namesize_and_divider() {
         let out = inject_bio_header("% {INJECT_BIO_HEADER}", "Jane Doe", &[]);
         assert!(out.contains("{\\namesize \\textbf{Jane Doe}}"));
+        assert!(out.contains("\\headerdivider"));
     }
 }

@@ -1,0 +1,16 @@
+Structure: T-format letter that directly maps job requirements to experience.
+
+Dear [Hiring Manager],
+
+Opening paragraph (2-3 sentences): name the role and summarize in one sentence why you are a strong match.
+
+Requirements mapping — 3-4 pairings, each as its own short block, in exactly this form:
+You need: [a key requirement quoted or paraphrased from the job description]
+I bring: [a matching experience with a concrete metric or technology]
+
+Closing paragraph (2-3 sentences): brief enthusiasm and a call to action.
+
+Sincerely,
+[Name]
+
+Tone: direct and factual. Length: 250-350 words.

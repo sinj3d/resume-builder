@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod models;
+pub mod seed_templates;
 
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -116,8 +117,45 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             sections_json TEXT,
             updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS cover_letters (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            archetype_id    INTEGER REFERENCES archetypes(id) ON DELETE SET NULL,
+            job_description TEXT NOT NULL,
+            content         TEXT NOT NULL,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS cover_letter_templates (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL UNIQUE,
+            content    TEXT NOT NULL,
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         "
     )?;
+
+    // Seed the builtin cover letter templates exactly once, guarded by a marker
+    // in app_settings. A blind INSERT OR IGNORE on every launch (or "seed when
+    // empty") would resurrect builtins the user deliberately deleted.
+    let seeded: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM app_settings WHERE key = 'builtin_templates_seeded'",
+        [],
+        |row| row.get(0),
+    )?;
+    if seeded == 0 {
+        for (name, content) in seed_templates::BUILTIN_TEMPLATES {
+            conn.execute(
+                "INSERT OR IGNORE INTO cover_letter_templates (name, content, is_builtin) VALUES (?1, ?2, 1)",
+                rusqlite::params![name, content],
+            )?;
+        }
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('builtin_templates_seeded', '1')",
+            [],
+        )?;
+    }
 
     // Check if the experiences table has the old CHECK constraint
     let create_sql: String = conn.query_row(
@@ -202,6 +240,38 @@ mod tests {
         // Running migrations twice should not error
         run_migrations(&conn).unwrap();
         run_migrations(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_builtin_templates_seeded_once() {
+        let conn = test_conn();
+        run_migrations(&conn).unwrap();
+
+        let builtin_count = || -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM cover_letter_templates WHERE is_builtin = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+
+        let expected = seed_templates::BUILTIN_TEMPLATES.len() as i64;
+        assert_eq!(builtin_count(), expected);
+
+        // Rerunning migrations must not duplicate the builtins.
+        run_migrations(&conn).unwrap();
+        assert_eq!(builtin_count(), expected);
+
+        // A builtin deleted by the user must NOT be resurrected on relaunch.
+        let first_name = seed_templates::BUILTIN_TEMPLATES[0].0;
+        conn.execute(
+            "DELETE FROM cover_letter_templates WHERE name = ?1",
+            [first_name],
+        )
+        .unwrap();
+        run_migrations(&conn).unwrap();
+        assert_eq!(builtin_count(), expected - 1);
     }
 
     // ─── CRUD Integration Tests ───

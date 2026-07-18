@@ -32,6 +32,7 @@ pub struct LayoutConfig {
     pub accent_rgb: [u8; 3],
     pub heading_sans: bool,
     pub section_rule: bool,
+    pub header_rule: bool,
     pub target_pages: usize,
 }
 
@@ -54,6 +55,7 @@ impl Default for LayoutConfig {
             accent_rgb: [128, 0, 0],
             heading_sans: false,
             section_rule: false,
+            header_rule: false,
             target_pages: 1,
         }
     }
@@ -96,10 +98,48 @@ pub fn get_presets() -> Vec<LayoutPreset> {
         ..LayoutConfig::default()
     };
 
+    let executive = LayoutConfig {
+        section_font_pt: 15.0,
+        name_font_pt: 26.0,
+        margin_h_in: 0.9,
+        margin_v_in: 0.8,
+        accent_rgb: [15, 45, 90],
+        section_rule: true,
+        header_rule: true,
+        ..LayoutConfig::default()
+    };
+
+    let compact = LayoutConfig {
+        body_font_pt: 10.0,
+        bullet_font_pt: 9.5,
+        section_font_pt: 12.5,
+        subsection_font_pt: 10.5,
+        name_font_pt: 20.0,
+        margin_h_in: 0.6,
+        margin_v_in: 0.5,
+        section_gap_pt: 3.0,
+        experience_gap_pt: 2.5,
+        accent_rgb: [0, 110, 110],
+        heading_sans: true,
+        section_rule: true,
+        ..LayoutConfig::default()
+    };
+
+    let amber = LayoutConfig {
+        name_font_pt: 22.0,
+        line_spacing: 1.05,
+        accent_rgb: [150, 90, 20],
+        header_rule: true,
+        ..LayoutConfig::default()
+    };
+
     vec![
         LayoutPreset { name: "Classic Maroon".to_string(), config: classic },
         LayoutPreset { name: "Modern Blue".to_string(), config: modern },
         LayoutPreset { name: "Minimalist Black".to_string(), config: minimal },
+        LayoutPreset { name: "Executive Navy".to_string(), config: executive },
+        LayoutPreset { name: "Compact Teal".to_string(), config: compact },
+        LayoutPreset { name: "Amber Slate".to_string(), config: amber },
     ]
 }
 
@@ -149,6 +189,11 @@ pub fn generate_layout_block(cfg: &LayoutConfig) -> String {
     } else {
         ""
     };
+    let header_divider = if cfg.header_rule {
+        r"\vspace{4pt}\noindent{\color{accent}\rule{\textwidth}{0.6pt}}"
+    } else {
+        ""
+    };
 
     format!(
         r"{begin}
@@ -181,6 +226,7 @@ pub fn generate_layout_block(cfg: &LayoutConfig) -> String {
 \setlist[itemize]{{leftmargin={indent}pt, itemsep={item_sep}pt, topsep=2.0pt, parsep=0.0pt, partopsep=0.0pt, before=\bulletsize}}
 
 \newcommand{{\namesize}}{{\fontsize{{{name}pt}}{{{name_baseline}pt}}\selectfont}}
+\newcommand{{\headerdivider}}{{{header_divider}}}
 \newcommand{{\expvspace}}{{\vspace{{{exp_vspace}pt}}}}
 {end}",
         begin = LAYOUT_BEGIN,
@@ -208,6 +254,7 @@ pub fn generate_layout_block(cfg: &LayoutConfig) -> String {
         item_sep = pt(item_sep),
         name = pt(name),
         name_baseline = pt(name * 1.2),
+        header_divider = header_divider,
         exp_vspace = pt(exp_gap * 0.5),
     )
 }
@@ -283,6 +330,7 @@ mod tests {
             accent_rgb: [10, 200, 30],
             heading_sans: true,
             section_rule: true,
+            header_rule: true,
             target_pages: 2,
         }
     }
@@ -375,11 +423,22 @@ mod tests {
     #[test]
     fn test_presets() {
         let presets = get_presets();
-        assert_eq!(presets.len(), 3);
+        assert_eq!(presets.len(), 6);
         assert_eq!(presets[0].name, "Classic Maroon");
         assert_eq!(presets[1].config.accent_rgb, [0, 80, 160]);
         assert!(presets[1].config.heading_sans);
         assert_eq!(presets[2].config.body_font_pt, 10.0);
+        assert!(presets[3].config.header_rule && presets[3].config.section_rule);
+    }
+
+    #[test]
+    fn test_header_rule_emission() {
+        let cfg = LayoutConfig { header_rule: true, ..LayoutConfig::default() };
+        let block = generate_layout_block(&cfg);
+        assert!(block.contains("\\newcommand{\\headerdivider}{\\vspace{4pt}\\noindent{\\color{accent}\\rule{\\textwidth}{0.6pt}}}"));
+
+        let off = generate_layout_block(&LayoutConfig::default());
+        assert!(off.contains("\\newcommand{\\headerdivider}{}"));
     }
 
     #[test]

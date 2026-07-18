@@ -13,11 +13,24 @@ pub struct GenerationResult {
     pub prompt: String,
 }
 
+/// Error prefix the frontend uses to show a "don't waste your time" popup
+/// instead of the generic error banner.
+pub const NO_MATCHES_PREFIX: &str = "NO_MATCHES::";
+
+/// KNN over-fetch size: the nearest neighbors are fetched wide and then
+/// filtered by archetype, so a tag filter can never starve the results just
+/// because the globally-nearest bullets belong to other archetypes.
+const KNN_POOL: i64 = 256;
+
 /// Generate a cover letter from a job description using RAG + LLM.
 ///
-/// 1. Embed the JD and retrieve the top-k most relevant bullets (optionally filtered by archetype).
-/// 2. Build a zero-hallucination prompt with the retrieved bullets.
-/// 3. Send the prompt to the active LLM provider (cloud or local).
+/// 1. Embed any bullets that are missing embeddings (self-healing).
+/// 2. Embed the JD and retrieve the top-k most relevant bullets. The archetype
+///    filter accepts bullets tagged directly OR belonging to a tagged
+///    experience (the UI mostly tags whole experiences).
+/// 3. Build a zero-hallucination prompt (optionally conditioned on a cover
+///    letter template) and send it to the active provider.
+/// 4. Prepend the bio contact header and persist the letter to history.
 #[tauri::command]
 pub async fn generate_cover_letter(
     db_state: State<'_, DbState>,
@@ -26,13 +39,20 @@ pub async fn generate_cover_letter(
     job_description: String,
     archetype_id: Option<i64>,
     top_k: Option<i32>,
+    template_id: Option<i64>,
 ) -> Result<GenerationResult, String> {
-    let k = top_k.unwrap_or(10);
+    let k = top_k.unwrap_or(10) as i64;
+    // Archetype 0 is the frontend's "Any / General" choice — no filter.
+    let arch_filter = archetype_id.filter(|id| *id > 0);
+    // Template 0 is the frontend's "No template (default)" choice.
+    let tmpl_filter = template_id.filter(|id| *id > 0);
 
-    // Step 1: Embed the JD and retrieve relevant bullets
-    let bullets: Vec<String> = {
+    // Steps 1+2: ensure embeddings exist, then retrieve relevant bullets.
+    let (bullets, bio, template) = {
         let mut model = emb_state.0.lock().map_err(|e| e.to_string())?;
         let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+
+        crate::rag::commands::embed_missing(&conn, &mut model)?;
 
         let query_embedding = model
             .embed(&job_description)
@@ -40,23 +60,27 @@ pub async fn generate_cover_letter(
 
         let query_bytes: Vec<u8> = query_embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
 
-        // Build SQL based on whether we're filtering by archetype
-        if let Some(arch_id) = archetype_id {
+        let bullets: Vec<String> = if let Some(arch_id) = arch_filter {
             let mut stmt = conn
                 .prepare(
                     "SELECT bp.content
                      FROM bullet_embeddings be
                      INNER JOIN bullet_points bp ON bp.id = be.bullet_id
-                     INNER JOIN archetype_bullets ab ON ab.bullet_point_id = bp.id
                      WHERE be.embedding MATCH ?1
                        AND k = ?2
-                       AND ab.archetype_id = ?3
-                     ORDER BY be.distance",
+                       AND (
+                            bp.experience_id IN
+                                (SELECT experience_id FROM archetype_experiences WHERE archetype_id = ?3)
+                         OR bp.id IN
+                                (SELECT bullet_point_id FROM archetype_bullets WHERE archetype_id = ?3)
+                       )
+                     ORDER BY be.distance
+                     LIMIT ?4",
                 )
                 .map_err(|e| e.to_string())?;
 
             let rows: Vec<String> = stmt
-                .query_map(rusqlite::params![query_bytes, k, arch_id], |row| {
+                .query_map(rusqlite::params![query_bytes, KNN_POOL, arch_id, k], |row| {
                     row.get(0)
                 })
                 .map_err(|e| e.to_string())?
@@ -71,34 +95,106 @@ pub async fn generate_cover_letter(
                      INNER JOIN bullet_points bp ON bp.id = be.bullet_id
                      WHERE be.embedding MATCH ?1
                        AND k = ?2
-                     ORDER BY be.distance",
+                     ORDER BY be.distance
+                     LIMIT ?3",
                 )
                 .map_err(|e| e.to_string())?;
 
             let rows: Vec<String> = stmt
-                .query_map(rusqlite::params![query_bytes, k], |row| row.get(0))
+                .query_map(rusqlite::params![query_bytes, KNN_POOL, k], |row| row.get(0))
                 .map_err(|e| e.to_string())?
                 .filter_map(|r| r.ok())
                 .collect();
             rows
-        }
+        };
+
+        let bio: crate::db::models::Bio = conn
+            .query_row(
+                "SELECT name, email, phone, location, linkedin, github, website FROM bio WHERE id = 1",
+                [],
+                |row| {
+                    Ok(crate::db::models::Bio {
+                        name: row.get(0).ok(),
+                        email: row.get(1).ok(),
+                        phone: row.get(2).ok(),
+                        location: row.get(3).ok(),
+                        linkedin: row.get(4).ok(),
+                        github: row.get(5).ok(),
+                        website: row.get(6).ok(),
+                    })
+                },
+            )
+            .unwrap_or(crate::db::models::Bio {
+                name: None,
+                email: None,
+                phone: None,
+                location: None,
+                linkedin: None,
+                github: None,
+                website: None,
+            });
+
+        // A selected-but-missing template is a hard error rather than a silent
+        // fallback — the user asked for a specific style.
+        let template: Option<String> = match tmpl_filter {
+            Some(id) => Some(
+                conn.query_row(
+                    "SELECT content FROM cover_letter_templates WHERE id = ?1",
+                    [id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        "Selected template no longer exists — pick another one in the Template dropdown.".to_string()
+                    }
+                    other => other.to_string(),
+                })?,
+            ),
+            None => None,
+        };
+
+        (bullets, bio, template)
     };
 
-    // Step 2: Build the prompt
-    let prompt = crate::llm::prompt::build_prompt(&bullets, &job_description);
+    // Don't waste the user's time generating a letter with nothing to say.
+    if bullets.is_empty() {
+        return Err(format!(
+            "{}No relevant experiences were found for this job description. \
+             Make sure the selected archetype has experiences tagged to it \
+             (or pick \"Any / General\"), and that those experiences have bullet points.",
+            NO_MATCHES_PREFIX
+        ));
+    }
 
-    // Step 3: Send to the active LLM provider
+    // Step 3: Build the prompt (system/user parts; local mode feeds them through
+    // the model's chat template, cloud mode and the UI use the joined string).
+    let parts = crate::llm::prompt::build_prompt_parts(
+        &bullets,
+        &job_description,
+        template.as_deref(),
+        bio.name.as_deref(),
+    );
+    let prompt = parts.joined();
+
     let settings = {
         llm_state.0.lock().map_err(|e| e.to_string())?.clone()
     };
 
-    let cover_letter = match settings.mode.as_str() {
+    let letter_body = match settings.mode.as_str() {
         "local" => {
             let path = settings
                 .gguf_path
-                .as_deref()
+                .clone()
                 .ok_or("No GGUF model path configured. Please set one in Settings.")?;
-            crate::llm::generate_local(&prompt, path)?
+            // llama-cpp is synchronous and CPU-heavy — run it on a blocking
+            // thread to keep the async runtime responsive (same pattern as
+            // extract_resume_pdf).
+            let (system, user) = (parts.system.clone(), parts.user.clone());
+            tauri::async_runtime::spawn_blocking(move || {
+                crate::llm::generate_local_chat(&system, &user, &path)
+            })
+            .await
+            .map_err(|e| format!("Local generation task failed to run: {}", e))??
         }
         "cloud" | _ => {
             let key = settings
@@ -114,6 +210,37 @@ pub async fn generate_cover_letter(
                 .map_err(|e| format!("Cloud generation failed: {}", e))?
         }
     };
+
+    // Step 4: Prepend the contact header deterministically (never trust the
+    // model with contact details), then persist to history.
+    let mut header_lines: Vec<String> = Vec::new();
+    if let Some(name) = bio.name.as_deref().filter(|s| !s.is_empty()) {
+        header_lines.push(name.to_string());
+    }
+    let contact: Vec<String> = [&bio.location, &bio.email, &bio.phone]
+        .iter()
+        .filter_map(|f| f.as_deref())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    if !contact.is_empty() {
+        header_lines.push(contact.join(" | "));
+    }
+
+    let cover_letter = if header_lines.is_empty() {
+        letter_body.trim().to_string()
+    } else {
+        format!("{}\n\n{}", header_lines.join("\n"), letter_body.trim())
+    };
+
+    {
+        let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO cover_letters (archetype_id, job_description, content) VALUES (?1, ?2, ?3)",
+            rusqlite::params![arch_filter, job_description, cover_letter],
+        )
+        .map_err(|e| format!("Failed to save cover letter to history: {}", e))?;
+    }
 
     Ok(GenerationResult {
         cover_letter,

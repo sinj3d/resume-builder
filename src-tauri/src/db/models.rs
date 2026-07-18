@@ -86,6 +86,28 @@ pub struct UpsertEducationDetailsInput {
     pub honors: Option<String>,
 }
 
+/// A previously generated cover letter (history).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoverLetter {
+    pub id: i64,
+    pub archetype_id: Option<i64>,
+    pub job_description: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+/// A cover letter template the generation prompt can be conditioned on.
+/// `is_builtin` is provenance only (seeded vs user-created) — builtins are
+/// just as editable and deletable as user templates.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoverLetterTemplate {
+    pub id: i64,
+    pub name: String,
+    pub content: String,
+    pub is_builtin: bool,
+    pub created_at: String,
+}
+
 /// Biographical information for the resume header.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bio {

@@ -130,8 +130,35 @@ export const searchSimilar = (job_description: string, archetype_id: number, top
   invoke<ScoredBullet[]>('search_similar', { jobDescription: job_description, archetypeId: archetype_id, topK: top_k });
 
 // LLM Commands
-export const generateCoverLetter = (jd: string, archetype_id: number, top_k: number) =>
-  invoke<GenerationResult>('generate_cover_letter', { jobDescription: jd, archetypeId: archetype_id, topK: top_k });
+export const generateCoverLetter = (jd: string, archetype_id: number | null, top_k: number, template_id: number | null) =>
+  invoke<GenerationResult>('generate_cover_letter', { jobDescription: jd, archetypeId: archetype_id, topK: top_k, templateId: template_id });
+
+// Cover letter templates
+export interface CoverLetterTemplate {
+  id: number;
+  name: string;
+  content: string;
+  is_builtin: boolean;
+  created_at: string;
+}
+export const listCoverLetterTemplates = () => invoke<CoverLetterTemplate[]>('list_cover_letter_templates');
+export const createCoverLetterTemplate = (name: string, content: string) =>
+  invoke<number>('create_cover_letter_template', { name, content });
+export const updateCoverLetterTemplate = (id: number, name: string, content: string) =>
+  invoke<void>('update_cover_letter_template', { id, name, content });
+export const deleteCoverLetterTemplate = (id: number) =>
+  invoke<void>('delete_cover_letter_template', { id });
+
+// Cover letter history
+export interface CoverLetter {
+  id: number;
+  archetype_id: number | null;
+  job_description: string;
+  content: string;
+  created_at: string;
+}
+export const listCoverLetters = () => invoke<CoverLetter[]>('list_cover_letters');
+export const deleteCoverLetter = (id: number) => invoke<void>('delete_cover_letter', { id });
 export const getLlmSettings = () => invoke<LLMSettings>('get_llm_settings');
 export const updateLlmSettings = (mode: string, ggufPath?: string, apiKey?: string, cloudModel?: string) =>
   invoke('update_llm_settings', { mode, ggufPath, apiKey, cloudModel });
@@ -163,7 +190,30 @@ export interface LayoutConfig {
   accent_rgb: [number, number, number];
   heading_sans: boolean;
   section_rule: boolean;
+  header_rule: boolean;
   target_pages: number;
+}
+
+/// Mirrors `ResumeEntry` in src-tauri/src/latex/template.rs.
+export interface ResumeEntryData {
+  title: string;
+  org: string | null;
+  start: string | null;
+  end: string | null;
+  bullets: string[];
+  education: EducationDetails | null;
+}
+
+export interface SectionGroupData {
+  heading: string;
+  entries: ResumeEntryData[];
+}
+
+/// Mirrors `ResumeData` in src-tauri/src/latex/commands.rs.
+export interface ResumeData {
+  bio: Bio;
+  skills: [string, string[]][];
+  groups: SectionGroupData[];
 }
 
 /// A named resume section mapping to one or more experience categories.
@@ -198,6 +248,8 @@ export const injectTemplate = (archetype_id: number, layout: LayoutConfig, secti
   invoke<string>('inject_template', { archetypeId: archetype_id, layout, sections });
 export const getArchetypeCategories = (archetype_id: number) =>
   invoke<string[]>('get_archetype_categories', { archetypeId: archetype_id });
+export const getResumeData = (archetype_id: number, sections: SectionDef[] | null) =>
+  invoke<ResumeData>('get_resume_data', { archetypeId: archetype_id, sections });
 export const savePdf = (path: string, data: number[]) =>
   invoke<void>('save_pdf', { path, data });
 

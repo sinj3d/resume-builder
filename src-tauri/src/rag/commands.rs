@@ -56,17 +56,14 @@ pub fn embed_bullet(
     Ok(())
 }
 
-/// Embed ALL bullet points that don't yet have embeddings.
-/// Useful for initial setup or after bulk import.
-#[tauri::command]
-pub fn embed_all_bullets(
-    db_state: State<'_, DbState>,
-    emb_state: State<'_, EmbeddingState>,
+/// Embed every bullet point that doesn't have an embedding yet. Returns how
+/// many were embedded. Called lazily before any retrieval so search keeps
+/// working even when bullets were created without an explicit embed step
+/// (manual entry, resume import, etc.).
+pub fn embed_missing(
+    conn: &rusqlite::Connection,
+    model: &mut crate::rag::EmbeddingModel,
 ) -> Result<u32, String> {
-    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
-    let mut model = emb_state.0.lock().map_err(|e| e.to_string())?;
-
-    // Find bullets without embeddings
     let mut stmt = conn
         .prepare(
             "SELECT bp.id, bp.content FROM bullet_points bp
@@ -100,6 +97,18 @@ pub fn embed_all_bullets(
     Ok(count)
 }
 
+/// Embed ALL bullet points that don't yet have embeddings.
+/// Useful for initial setup or after bulk import.
+#[tauri::command]
+pub fn embed_all_bullets(
+    db_state: State<'_, DbState>,
+    emb_state: State<'_, EmbeddingState>,
+) -> Result<u32, String> {
+    let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+    let mut model = emb_state.0.lock().map_err(|e| e.to_string())?;
+    embed_missing(&conn, &mut model)
+}
+
 /// Semantic search: embed the query text and find the most similar bullet points.
 /// Optionally filter by archetype.
 #[tauri::command]
@@ -115,6 +124,9 @@ pub fn search_similar(
 
     let k = top_k.unwrap_or(10);
 
+    // Self-heal: bullets created without an explicit embed step still search.
+    embed_missing(&conn, &mut model)?;
+
     // Embed the query
     let query_embedding = model
         .embed(&query)
@@ -122,23 +134,32 @@ pub fn search_similar(
 
     let query_bytes = vec_to_bytes(&query_embedding);
 
-    // KNN query against vec0 table
-    let results = if let Some(arch_id) = archetype_id {
+    // KNN query against vec0 table. The neighbor pool is fetched wide and
+    // filtered afterwards so an archetype filter can't starve the results;
+    // the filter accepts bullets tagged directly OR belonging to a tagged
+    // experience (the UI mostly tags whole experiences).
+    const KNN_POOL: i64 = 256;
+    let results = if let Some(arch_id) = archetype_id.filter(|id| *id > 0) {
         let mut stmt = conn
             .prepare(
                 "SELECT be.bullet_id, be.distance, bp.experience_id, bp.content, bp.sort_order
                  FROM bullet_embeddings be
                  INNER JOIN bullet_points bp ON bp.id = be.bullet_id
-                 INNER JOIN archetype_bullets ab ON ab.bullet_point_id = bp.id
                  WHERE be.embedding MATCH ?1
                    AND k = ?2
-                   AND ab.archetype_id = ?3
-                 ORDER BY be.distance",
+                   AND (
+                        bp.experience_id IN
+                            (SELECT experience_id FROM archetype_experiences WHERE archetype_id = ?3)
+                     OR bp.id IN
+                            (SELECT bullet_point_id FROM archetype_bullets WHERE archetype_id = ?3)
+                   )
+                 ORDER BY be.distance
+                 LIMIT ?4",
             )
             .map_err(|e| e.to_string())?;
 
         let rows: Vec<ScoredBullet> = stmt
-            .query_map(rusqlite::params![query_bytes, k, arch_id], |row| {
+            .query_map(rusqlite::params![query_bytes, KNN_POOL, arch_id, k], |row| {
                 Ok(ScoredBullet {
                     id: row.get(0)?,
                     distance: row.get(1)?,
@@ -159,12 +180,13 @@ pub fn search_similar(
                  INNER JOIN bullet_points bp ON bp.id = be.bullet_id
                  WHERE be.embedding MATCH ?1
                    AND k = ?2
-                 ORDER BY be.distance",
+                 ORDER BY be.distance
+                 LIMIT ?3",
             )
             .map_err(|e| e.to_string())?;
 
         let rows: Vec<ScoredBullet> = stmt
-            .query_map(rusqlite::params![query_bytes, k], |row| {
+            .query_map(rusqlite::params![query_bytes, KNN_POOL, k], |row| {
                 Ok(ScoredBullet {
                     id: row.get(0)?,
                     distance: row.get(1)?,

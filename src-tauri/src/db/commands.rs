@@ -685,6 +685,153 @@ pub fn delete_education_details(
 }
 
 // ──────────────────────────────────────────────
+// Cover Letter History
+// ──────────────────────────────────────────────
+
+/// List past generated cover letters, most recent first.
+#[tauri::command]
+pub fn list_cover_letters(state: State<'_, DbState>) -> Result<Vec<CoverLetter>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, archetype_id, job_description, content, created_at
+             FROM cover_letters ORDER BY created_at DESC, id DESC LIMIT 200",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(CoverLetter {
+                id: row.get(0)?,
+                archetype_id: row.get(1)?,
+                job_description: row.get(2)?,
+                content: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Delete a cover letter from history.
+#[tauri::command]
+pub fn delete_cover_letter(state: State<'_, DbState>, id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM cover_letters WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ──────────────────────────────────────────────
+// Cover Letter Templates
+// ──────────────────────────────────────────────
+
+/// List all cover letter templates, builtins first, then by name.
+#[tauri::command]
+pub fn list_cover_letter_templates(
+    state: State<'_, DbState>,
+) -> Result<Vec<CoverLetterTemplate>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, content, is_builtin, created_at
+             FROM cover_letter_templates ORDER BY is_builtin DESC, name ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(CoverLetterTemplate {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                content: row.get(2)?,
+                is_builtin: row.get::<_, i64>(3)? != 0,
+                created_at: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Create a user cover letter template. Returns the new id.
+#[tauri::command]
+pub fn create_cover_letter_template(
+    state: State<'_, DbState>,
+    name: String,
+    content: String,
+) -> Result<i64, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Template name cannot be empty.".to_string());
+    }
+    if content.trim().is_empty() {
+        return Err("Template content cannot be empty.".to_string());
+    }
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO cover_letter_templates (name, content) VALUES (?1, ?2)",
+        rusqlite::params![name, content],
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::SqliteFailure(err, _)
+            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            "A template with this name already exists.".to_string()
+        }
+        other => other.to_string(),
+    })?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Update a template's name and content (builtins are editable too).
+#[tauri::command]
+pub fn update_cover_letter_template(
+    state: State<'_, DbState>,
+    id: i64,
+    name: String,
+    content: String,
+) -> Result<(), String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Template name cannot be empty.".to_string());
+    }
+    if content.trim().is_empty() {
+        return Err("Template content cannot be empty.".to_string());
+    }
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let affected = conn
+        .execute(
+            "UPDATE cover_letter_templates SET name = ?1, content = ?2 WHERE id = ?3",
+            rusqlite::params![name, content, id],
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::SqliteFailure(err, _)
+                if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                "A template with this name already exists.".to_string()
+            }
+            other => other.to_string(),
+        })?;
+    if affected == 0 {
+        return Err("Template not found.".to_string());
+    }
+    Ok(())
+}
+
+/// Delete a cover letter template.
+#[tauri::command]
+pub fn delete_cover_letter_template(state: State<'_, DbState>, id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM cover_letter_templates WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ──────────────────────────────────────────────
 // Resume Config (per-archetype layout + sections)
 // ──────────────────────────────────────────────
 

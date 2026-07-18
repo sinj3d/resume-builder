@@ -12,6 +12,14 @@ const isEducationCategory = (cat: string) =>
 
 const EMPTY_EDU_FORM = { degree: '', gpa: '', coursework: '', honors: '' };
 
+/// Split pasted/typed multi-line text into clean bullet strings, stripping
+/// leading bullet glyphs copied from other documents.
+const splitBulletLines = (text: string): string[] =>
+    text
+        .split(/\r?\n/)
+        .map(l => l.replace(/^\s*[•·▪‣◦*\-–—]\s*/, '').trim())
+        .filter(l => l.length > 0);
+
 export default function ExperiencesPage() {
     const [experiences, setExperiences] = useState<Experience[]>([]);
     const [expandedExpId, setExpandedExpId] = useState<number | null>(null);
@@ -28,6 +36,7 @@ export default function ExperiencesPage() {
     const [isCurrentJob, setIsCurrentJob] = useState(false);
     const [customCategory, setCustomCategory] = useState('');
     const [eduForm, setEduForm] = useState(EMPTY_EDU_FORM);
+    const [bulletsText, setBulletsText] = useState('');
     
     // Bullet state
     const [newBulletContent, setNewBulletContent] = useState('');
@@ -88,6 +97,7 @@ export default function ExperiencesPage() {
         setIsCurrentJob(false);
         setCustomCategory('');
         setEduForm(EMPTY_EDU_FORM);
+        setBulletsText('');
         setEditingExp(null);
     };
 
@@ -143,6 +153,9 @@ export default function ExperiencesPage() {
             } else {
                 const created = await createExperience(expForm.title, expForm.org, expForm.start_date, finalEndDate, finalCategory);
                 expId = created.id;
+                for (const line of splitBulletLines(bulletsText)) {
+                    await createBullet(expId, line);
+                }
                 setNotification('Experience successfully added!');
             }
 
@@ -178,6 +191,25 @@ export default function ExperiencesPage() {
             loadBullets(expId);
         } catch (error) {
             console.error('Failed to create bullet', error);
+        }
+    };
+
+    /** Pasting a multi-line list into the bullet input creates one bullet per
+     *  line immediately (leading bullet glyphs are stripped). */
+    const handleBulletPaste = async (expId: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+        const text = e.clipboardData.getData('text');
+        if (!text.includes('\n')) return; // single line: default paste behavior
+        e.preventDefault();
+        const lines = splitBulletLines(text);
+        try {
+            for (const line of lines) {
+                await createBullet(expId, line);
+            }
+            setNewBulletContent('');
+            loadBullets(expId);
+            setNotification(`Added ${lines.length} bullet points from paste.`);
+        } catch (error) {
+            console.error('Failed to paste bullets', error);
         }
     };
 
@@ -342,6 +374,21 @@ export default function ExperiencesPage() {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Bullet points (create only — existing entries manage bullets on their card) */}
+                            {!editingExp && (
+                                <div className="flex flex-col gap-1.5 md:col-span-2">
+                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">
+                                        Bullet Points <span className="font-normal text-slate-400 text-xs">(one per line — paste a list directly)</span>
+                                    </label>
+                                    <textarea
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-y min-h-[90px]"
+                                        placeholder={"Built a REST API serving 10k req/s\nReduced deployment time by 60%"}
+                                        value={bulletsText}
+                                        onChange={e => setBulletsText(e.target.value)}
+                                    />
+                                </div>
+                            )}
 
                             {/* Education-specific fields */}
                             {isEducationCategory(expForm.category === 'Other' ? customCategory : expForm.category) && (
@@ -508,11 +555,12 @@ export default function ExperiencesPage() {
                                         </ul>
 
                                         <form onSubmit={(e) => handleCreateBullet(exp.id, e)} className="flex gap-2">
-                                            <input 
+                                            <input
                                                 className="flex-1 px-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                                placeholder="Describe a measurable achievement or responsibility..." 
-                                                value={newBulletContent} 
-                                                onChange={e => setNewBulletContent(e.target.value)} 
+                                                placeholder="Describe a measurable achievement — or paste a whole list here..."
+                                                value={newBulletContent}
+                                                onChange={e => setNewBulletContent(e.target.value)}
+                                                onPaste={e => handleBulletPaste(exp.id, e)}
                                             />
                                             <button type="submit" className="px-5 py-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-200 dark:hover:bg-white text-white dark:text-slate-900 text-sm font-semibold rounded-lg transition-colors shrink-0 shadow-sm flex items-center gap-2">
                                                 <Plus size={16}/> Add Bullet

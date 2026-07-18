@@ -139,25 +139,25 @@ fn date_sort_key(end: &Option<String>) -> i64 {
     0
 }
 
-/// Injects bio, skills, and experiences into a document generated from the
-/// given layout, then returns the ready-to-compile LaTeX source string.
-///
-/// # Parameters
-/// * `archetype_id` – Which archetype's tagged items to pull
-/// * `layout`       – Full visual configuration (fonts, margins, spacing, color)
-/// * `sections`     – Ordered section definitions (heading + categories each).
-///                    Categories not covered by any definition are appended as
-///                    their own sections so nothing silently disappears.
-#[tauri::command]
-pub fn inject_template(
-    archetype_id: i64,
-    layout: layout::LayoutConfig,
-    sections: Option<Vec<layout::SectionDef>>,
-    state: State<'_, DbState>,
-) -> Result<String, String> {
-    let (bio, skills, grouped_experiences) = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
+/// Everything needed to render the resume, in display order. Consumed by the
+/// LaTeX injection below and returned as JSON to the frontend's HTML preview.
+#[derive(serde::Serialize)]
+pub struct ResumeData {
+    pub bio: crate::db::models::Bio,
+    pub skills: Vec<(String, Vec<String>)>,
+    pub groups: Vec<template::SectionGroup>,
+}
 
+/// Fetch and group an archetype's resume content: bio, tagged skills, and
+/// tagged experiences composed into sections per `defs` (merged sections pool
+/// their categories' entries, sorted most-recent first; uncovered categories
+/// are appended as their own sections so nothing silently disappears).
+fn assemble_resume_data(
+    conn: &rusqlite::Connection,
+    archetype_id: i64,
+    defs: &[layout::SectionDef],
+) -> Result<ResumeData, String> {
+    {
         // 1. Fetch bio
         let bio: crate::db::models::Bio = conn
             .query_row(
@@ -306,10 +306,9 @@ pub fn inject_template(
 
         // 4. Compose sections from the definitions; merged sections pool the
         //    entries of all their categories, sorted most-recent first.
-        let defs = sections.unwrap_or_default();
-        let mut groups: Vec<(String, Vec<template::ResumeEntry>)> = Vec::new();
+        let mut groups: Vec<template::SectionGroup> = Vec::new();
 
-        for def in &defs {
+        for def in defs {
             let mut pooled: Vec<(i64, template::ResumeEntry)> = Vec::new();
             for cat in &def.categories {
                 if let Some(entries) = category_map.remove(cat) {
@@ -320,10 +319,10 @@ pub fn inject_template(
                 continue;
             }
             pooled.sort_by(|a, b| b.0.cmp(&a.0));
-            groups.push((
-                def.heading.clone(),
-                pooled.into_iter().map(|(_, e)| e).collect(),
-            ));
+            groups.push(template::SectionGroup {
+                heading: def.heading.clone(),
+                entries: pooled.into_iter().map(|(_, e)| e).collect(),
+            });
         }
 
         // 5. Reconciliation: categories not covered by any definition are
@@ -343,11 +342,49 @@ pub fn inject_template(
         });
         for (heading, mut entries) in remainder {
             entries.sort_by(|a, b| b.0.cmp(&a.0));
-            groups.push((heading, entries.into_iter().map(|(_, e)| e).collect()));
+            groups.push(template::SectionGroup {
+                heading,
+                entries: entries.into_iter().map(|(_, e)| e).collect(),
+            });
         }
 
-        (bio, grouped_skills, groups)
+        Ok(ResumeData { bio, skills: grouped_skills, groups })
+    }
+}
+
+/// Returns the structured resume content for an archetype (bio, skills, and
+/// composed sections). The frontend's live HTML preview renders from this.
+#[tauri::command]
+pub fn get_resume_data(
+    archetype_id: i64,
+    sections: Option<Vec<layout::SectionDef>>,
+    state: State<'_, DbState>,
+) -> Result<ResumeData, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    assemble_resume_data(&conn, archetype_id, &sections.unwrap_or_default())
+}
+
+/// Injects bio, skills, and experiences into a document generated from the
+/// given layout, then returns the ready-to-compile LaTeX source string.
+///
+/// # Parameters
+/// * `archetype_id` – Which archetype's tagged items to pull
+/// * `layout`       – Full visual configuration (fonts, margins, spacing, color)
+/// * `sections`     – Ordered section definitions (heading + categories each).
+///                    Categories not covered by any definition are appended as
+///                    their own sections so nothing silently disappears.
+#[tauri::command]
+pub fn inject_template(
+    archetype_id: i64,
+    layout: layout::LayoutConfig,
+    sections: Option<Vec<layout::SectionDef>>,
+    state: State<'_, DbState>,
+) -> Result<String, String> {
+    let data = {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        assemble_resume_data(&conn, archetype_id, &sections.unwrap_or_default())?
     };
+    let (bio, skills, grouped_experiences) = (data.bio, data.skills, data.groups);
 
     if grouped_experiences.is_empty() {
         return Err(

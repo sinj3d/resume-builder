@@ -87,25 +87,35 @@ pub async fn generate_cloud(
     Ok(text.to_string())
 }
 
+/// Input for local generation: either a preformatted raw prompt (the resume
+/// parser builds its own ChatML) or system/user chat parts to be formatted with
+/// the model's own chat template after the GGUF is loaded.
+#[cfg(feature = "local-llm")]
+enum LocalInput<'a> {
+    Raw { prompt: &'a str, add_bos: bool },
+    Chat { system: &'a str, user: &'a str },
+}
+
 /// Run a local GGUF model via llama-cpp-2 with greedy decoding.
 ///
 /// Shared by cover-letter generation and resume parsing. The context is sized to
 /// hold the prompt plus `max_tokens` of output, so long resumes don't overflow.
-/// `add_bos` controls whether a BOS token is prepended (chat models using ChatML,
-/// like the parser model, don't want one).
+/// For `Chat` input the prompt is formatted with the GGUF's embedded chat
+/// template (falling back to llama.cpp's builtin "chatml", then to a manual
+/// ChatML string), so a fine-tuned chat model sees exactly the format it was
+/// trained on.
 ///
 /// Only available when compiled with the `local-llm` feature.
 #[cfg(feature = "local-llm")]
 fn run_local_generation(
-    prompt: &str,
+    input: LocalInput,
     gguf_path: &str,
     max_tokens: i32,
-    add_bos: bool,
 ) -> Result<String, String> {
     use llama_cpp_2::llama_backend::LlamaBackend;
     use llama_cpp_2::model::LlamaModel;
     use llama_cpp_2::model::params::LlamaModelParams;
-    use llama_cpp_2::model::AddBos;
+    use llama_cpp_2::model::{AddBos, LlamaChatMessage, LlamaChatTemplate};
     use llama_cpp_2::context::params::LlamaContextParams;
     use llama_cpp_2::llama_batch::LlamaBatch;
     use llama_cpp_2::sampling::LlamaSampler;
@@ -121,9 +131,42 @@ fn run_local_generation(
     let model = LlamaModel::load_from_file(&backend, gguf_path, &model_params)
         .map_err(|e| format!("Failed to load GGUF model: {}", e))?;
 
+    // Resolve the input to a prompt string + BOS policy. Chat input is formatted
+    // with the model's chat template; special tokens are then parsed during
+    // tokenization, so no extra BOS is prepended (same as the parser path).
+    let (prompt, add_bos) = match input {
+        LocalInput::Raw { prompt, add_bos } => (prompt.to_string(), add_bos),
+        LocalInput::Chat { system, user } => {
+            let messages = vec![
+                LlamaChatMessage::new("system".to_string(), system.to_string())
+                    .map_err(|e| format!("Invalid system message: {}", e))?,
+                LlamaChatMessage::new("user".to_string(), user.to_string())
+                    .map_err(|e| format!("Invalid user message: {}", e))?,
+            ];
+
+            // Embedded template first, then llama.cpp's builtin ChatML.
+            let template = model
+                .chat_template(None)
+                .ok()
+                .or_else(|| LlamaChatTemplate::new("chatml").ok());
+            let formatted = template
+                .and_then(|tmpl| model.apply_chat_template(&tmpl, &messages, true).ok());
+
+            let prompt = match formatted {
+                Some(p) => p,
+                // Last resort: manual ChatML, the same shape the parser uses.
+                None => format!(
+                    "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                    system, user
+                ),
+            };
+            (prompt, false)
+        }
+    };
+
     // Tokenize the prompt first so we can size the context to fit prompt + output.
     let bos = if add_bos { AddBos::Always } else { AddBos::Never };
-    let tokens = model.str_to_token(prompt, bos)
+    let tokens = model.str_to_token(&prompt, bos)
         .map_err(|e| format!("Tokenization failed: {}", e))?;
 
     // Context large enough for the prompt plus the requested generation budget,
@@ -188,22 +231,23 @@ fn run_local_generation(
     Ok(output)
 }
 
-/// Generate a cover letter with a user-supplied local GGUF model.
+/// Generate a cover letter with a user-supplied local GGUF model. The
+/// system/user parts are formatted with the model's own chat template.
 #[cfg(feature = "local-llm")]
-pub fn generate_local(prompt: &str, gguf_path: &str) -> Result<String, String> {
-    run_local_generation(prompt, gguf_path, 1024, true)
+pub fn generate_local_chat(system: &str, user: &str, gguf_path: &str) -> Result<String, String> {
+    run_local_generation(LocalInput::Chat { system, user }, gguf_path, 1024)
 }
 
 /// Parse a resume with the specialized, auto-downloaded parser model.
 /// Uses a larger output budget and ChatML (no BOS) since the model is a chat model.
 #[cfg(feature = "local-llm")]
 pub fn generate_local_parse(prompt: &str, gguf_path: &str) -> Result<String, String> {
-    run_local_generation(prompt, gguf_path, 2048, false)
+    run_local_generation(LocalInput::Raw { prompt, add_bos: false }, gguf_path, 2048)
 }
 
 /// Stub for when the local-llm feature is not enabled.
 #[cfg(not(feature = "local-llm"))]
-pub fn generate_local(_prompt: &str, _gguf_path: &str) -> Result<String, String> {
+pub fn generate_local_chat(_system: &str, _user: &str, _gguf_path: &str) -> Result<String, String> {
     Err("Local LLM support is not enabled. Recompile with `--features local-llm` (requires cmake).".to_string())
 }
 

@@ -1,0 +1,12 @@
+# Install torch first, separately, with CUDA support
+# (cu128 required for RTX 50-series/Blackwell; cu126 for RTX 30/40):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+transformers>=4.51
+peft>=0.15
+bitsandbytes>=0.45
+datasets
+accelerate
+sentence-transformers>=3.0
+numpy
+requests
+anthropic>=0.92

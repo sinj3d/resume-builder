@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
-import { LayoutConfig, LayoutPreset } from '../lib/tauri';
+import { LayoutConfig } from '../lib/tauri';
 import { spacingSeed, rgbToHex, hexToRgb } from '../lib/latexLayout';
 
 interface Props {
     layout: LayoutConfig;
-    presets: LayoutPreset[];
     disabled: boolean;
     onChange: (next: LayoutConfig) => void;
 }
@@ -44,15 +43,10 @@ function Slider({ label, value, min, max, step, unit, disabled, onChange }: {
  * Collapsible panel of visual knobs. Every change immediately produces a new
  * LayoutConfig; the parent patches the LaTeX source and schedules a recompile.
  */
-export default function LayoutControls({ layout, presets, disabled, onChange }: Props) {
+export default function LayoutControls({ layout, disabled, onChange }: Props) {
     const [open, setOpen] = useState(true);
 
     const set = (patch: Partial<LayoutConfig>) => onChange({ ...layout, ...patch });
-
-    const applyPreset = (name: string) => {
-        const preset = presets.find(p => p.name === name);
-        if (preset) onChange({ ...preset.config });
-    };
 
     const setTargetPages = (pages: number) => {
         // Page count seeds the spacing sliders with recommended values.
@@ -77,21 +71,8 @@ export default function LayoutControls({ layout, presets, disabled, onChange }: 
 
             {open && (
                 <div className="px-4 pb-4 flex flex-col gap-4">
-                    {/* Preset + page count + toggles + accent */}
+                    {/* Page count + toggles + accent */}
                     <div className="flex flex-wrap gap-4 items-end">
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs font-semibold text-slate-500 uppercase">Preset</label>
-                            <select
-                                className="px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
-                                value=""
-                                disabled={disabled}
-                                onChange={e => { if (e.target.value) applyPreset(e.target.value); }}
-                            >
-                                <option value="">Apply preset…</option>
-                                {presets.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
-                            </select>
-                        </div>
-
                         <div className="flex flex-col gap-1">
                             <label className="text-xs font-semibold text-slate-500 uppercase">Page Target</label>
                             <select
@@ -125,7 +106,18 @@ export default function LayoutControls({ layout, presets, disabled, onChange }: 
                                 onChange={e => set({ section_rule: e.target.checked })}
                                 className="rounded text-blue-600"
                             />
-                            Section rule
+                            Section dividers
+                        </label>
+
+                        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 pb-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={layout.header_rule}
+                                disabled={disabled}
+                                onChange={e => set({ header_rule: e.target.checked })}
+                                className="rounded text-blue-600"
+                            />
+                            Header divider
                         </label>
 
                         <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 pb-2 cursor-pointer">

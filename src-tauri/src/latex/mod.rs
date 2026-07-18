@@ -23,10 +23,18 @@ pub fn compile_latex(tex_source: &str, binary_path: &Path) -> std::result::Resul
         .map_err(|e| format!("Failed to write temp .tex file: {}", e))?;
 
     // Invoke binary: tectonic.exe resume.tex --outdir <temp_dir>
-    let output = Command::new(binary_path)
-        .arg(&tex_file_path)
-        .arg("--outdir")
-        .arg(&temp_dir)
+    let mut command = Command::new(binary_path);
+    command.arg(&tex_file_path).arg("--outdir").arg(&temp_dir);
+
+    // Prevent a console window from flashing up on every compile.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = command
         .output()
         .map_err(|e| format!("Failed to execute tectonic binary at {:?}: {}", binary_path, e))?;
 

@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import ExperiencesPage from './pages/ExperiencesPage';
 import ArchetypesPage from './pages/ArchetypesPage';
 import GeneratePage from './pages/GeneratePage';
+import TemplatesPage from './pages/TemplatesPage';
 import LatexPage from './pages/LatexPage';
 import SettingsPage from './pages/SettingsPage';
 import OnboardingPage from './pages/OnboardingPage';
@@ -17,6 +18,7 @@ function App() {
           <Route index element={<ExperiencesPage />} />
           <Route path="archetypes" element={<ArchetypesPage />} />
           <Route path="generate" element={<GeneratePage />} />
+          <Route path="templates" element={<TemplatesPage />} />
           <Route path="latex" element={<LatexPage />} />
           <Route path="onboarding" element={<OnboardingPage />} />
           <Route path="bio" element={<BioPage />} />

@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { Briefcase, Tags, FileText, FileCode2, Settings, PenTool, UserCircle } from 'lucide-react';
+import { Briefcase, Tags, FileText, FileCode2, Settings, PenTool, UserCircle, LayoutTemplate } from 'lucide-react';
 
 export default function Layout() {
     const navItems = [
@@ -7,6 +7,7 @@ export default function Layout() {
         { to: "/", label: "Experiences", icon: Briefcase },
         { to: "/archetypes", label: "Archetypes", icon: Tags },
         { to: "/generate", label: "Cover Letter", icon: FileText },
+        { to: "/templates", label: "Templates", icon: LayoutTemplate },
         { to: "/latex", label: "Resume Editor", icon: FileCode2 },
         { to: "/onboarding", label: "PDF Import", icon: PenTool },
         { to: "/settings", label: "Settings", icon: Settings },

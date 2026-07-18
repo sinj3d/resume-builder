@@ -135,12 +135,15 @@ export default function BioPage() {
                 </div>
             )}
 
-            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm max-w-3xl flex-1 overflow-y-auto w-full mx-auto md:mx-0">
-                <p className="text-slate-500 dark:text-slate-400 mb-6 text-sm">
+            {/* Two columns across the full width so everything (including Save)
+                is visible without scrolling. */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 flex-1 min-h-0 items-stretch">
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 pt-4 border border-slate-200 dark:border-slate-700 shadow-sm overflow-y-auto w-full flex flex-col">
+                <p className="text-slate-500 dark:text-slate-400 mb-4 text-sm">
                     Enter your personal and contact details. These will be injected as the header section of your generated resumes and cover letters.
                 </p>
 
-                <form onSubmit={handleSave} className="flex flex-col gap-8">
+                <form onSubmit={handleSave} className="flex flex-col gap-5 flex-1">
                     {/* Personal Details Section */}
                     <div className="flex flex-col gap-4">
                         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700 pb-2">
@@ -234,7 +237,7 @@ export default function BioPage() {
                         </div>
                     </div>
 
-                    <div className="flex justify-end mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                    <div className="flex justify-end mt-auto pt-4 border-t border-slate-100 dark:border-slate-700 sticky bottom-0 bg-white dark:bg-slate-800">
                         <button type="submit" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-8 rounded-lg transition-colors shadow-md">
                             <Save size={18} /> Save Details
                         </button>
@@ -243,7 +246,7 @@ export default function BioPage() {
             </div>
 
             {/* Skills Section */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm max-w-3xl flex-1 w-full mx-auto md:mx-0">
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 pt-4 border border-slate-200 dark:border-slate-700 shadow-sm overflow-y-auto w-full">
                 <form onSubmit={handleAddSkill} className="flex flex-col gap-4 mb-8">
                     <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700 pb-2">
                         Professional Skills
@@ -309,6 +312,7 @@ export default function BioPage() {
                         </div>
                     )}
                 </div>
+            </div>
             </div>
         </div>
     );

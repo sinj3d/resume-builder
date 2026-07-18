@@ -1,0 +1,7 @@
+data/
+out/
+__pycache__/
+llama.cpp/
+.venv/
+.env
+*.log
