@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # tauri-action creates the draft release + uploads assets
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # never kill a half-uploaded release build
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false # one platform failing must not cancel the others
+      matrix:
+        include:
+          - platform: 'macos-latest' # arm64 runner, native build
+            args: '--target aarch64-apple-darwin'
+            rust-targets: 'aarch64-apple-darwin'
+          - platform: 'macos-latest' # cross-compile to Intel
+            args: '--target x86_64-apple-darwin'
+            rust-targets: 'x86_64-apple-darwin'
+          - platform: 'ubuntu-22.04'
+            args: ''
+            rust-targets: ''
+          - platform: 'windows-latest'
+            args: ''
+            rust-targets: ''
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify tag matches app version
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          if [ "v${VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match tauri.conf.json version v${VERSION}. Bump package.json, src-tauri/tauri.conf.json and src-tauri/Cargo.toml (+ Cargo.lock), or fix the tag."
+            exit 1
+          fi
+
+      - name: Install Tauri v2 system dependencies (Linux only)
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }} # empty is fine on Linux/Windows
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.rust-targets }} # disambiguate the two macOS legs
+          cache-on-failure: true
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and attach to draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Resume Builder ${{ github.ref_name }}'
+          releaseBody: |
+            Downloads are attached below.
+
+            - **Windows**: `.msi` or `-setup.exe` (NSIS). SmartScreen will warn on first run (unsigned build): "More info" -> "Run anyway".
+            - **macOS**: `.dmg` (`aarch64` = Apple Silicon, `x64` = Intel). Not notarized: approve under System Settings -> Privacy & Security -> "Open Anyway", or run `xattr -cr /Applications/resume-builder.app`.
+            - **Linux**: `.AppImage` (portable), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE).
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

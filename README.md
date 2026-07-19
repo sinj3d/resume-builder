@@ -97,6 +97,24 @@ chat template, matching how the model was trained.
 Point **Settings → Local (GGUF)** at any tuned model file to use it; any other
 Qwen-style instruct GGUF also works untuned.
 
+## Download & install
+
+Prebuilt installers for every release are on the
+[Releases page](https://github.com/sinj3d/resume-builder/releases). Builds are
+currently **unsigned**, so each OS shows a one-time warning:
+
+- **Windows** — download the `.msi` or `-setup.exe`. If SmartScreen warns, click
+  **More info → Run anyway**.
+- **macOS** — download the `.dmg` for your chip (`aarch64` = Apple Silicon,
+  `x64` = Intel). The app is not notarized: on first launch approve it under
+  **System Settings → Privacy & Security → Open Anyway**, or run
+  `xattr -cr /Applications/resume-builder.app`.
+- **Linux** — download the `.AppImage` (then `chmod +x` it), or install the
+  `.deb` (`sudo apt install ./resume-builder_*.deb`) / `.rpm`
+  (`sudo dnf install ./resume-builder-*.rpm`).
+
+Maintainers: see [docs/RELEASING.md](docs/RELEASING.md) for how releases are cut.
+
 ## Getting started
 
 ### Prerequisites
