@@ -27,7 +27,7 @@ jobs:
 
   rust:
     name: Rust (cargo check)
-    runs-on: ubuntu-22.04 # match the release Linux runner
+    runs-on: ubuntu-24.04 # match the release Linux runner; ort's prebuilt ONNX Runtime needs glibc >= 2.38
     steps:
       - uses: actions/checkout@v4
       - name: Install Tauri v2 system dependencies

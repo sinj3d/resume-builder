@@ -65,11 +65,18 @@ producing a mislabeled release.
   `xattr -cr`). Future work: a code-signing certificate, Apple notarization, and
   `tauri-plugin-updater` for in-app updates (tauri-action supports updater
   artifacts via `TAURI_SIGNING_PRIVATE_KEY`).
-- **llama-cpp-2** is the most likely build failure. If the Linux job fails with
-  "unable to find libclang", add `llvm-dev libclang-dev clang` to the apt step.
-  The macOS x86_64 cross-compile leg is the riskiest; if it breaks, build it
-  natively on an Intel runner instead — do not drop the `local-llm` feature for
-  one platform.
+- **Linux builds require glibc ≥ 2.38** (Ubuntu 24.04+, Debian 13+,
+  Fedora 39+). The `ort` crate's prebuilt ONNX Runtime static libs reference
+  `__isoc23_*` symbols that only exist in glibc 2.38+, which is also why the
+  workflows build on `ubuntu-24.04` — linking fails on 22.04. Supporting older
+  distros would require compiling ONNX Runtime from source.
+- **macOS minimum version is 10.15** (`bundle.macOS.minimumSystemVersion` in
+  `tauri.conf.json`). llama.cpp uses `std::filesystem`, which Apple's SDK
+  rejects below a 10.15 deployment target; Tauri's default of 10.13 breaks the
+  llama-cpp-sys-2 compile.
+- **llama-cpp-2** is otherwise the most likely build failure. If the Linux job
+  fails with "unable to find libclang", add `llvm-dev libclang-dev clang` to
+  the apt step — do not drop the `local-llm` feature for one platform.
 - **Actions billing**: free and unlimited only if the repo is public. On a
   private repo one release costs ~660+ billed minutes (macOS counts 10×) against
   the 2000/month free tier.

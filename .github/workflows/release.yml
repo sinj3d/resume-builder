@@ -24,7 +24,7 @@ jobs:
           - platform: 'macos-latest' # cross-compile to Intel
             args: '--target x86_64-apple-darwin'
             rust-targets: 'x86_64-apple-darwin'
-          - platform: 'ubuntu-22.04'
+          - platform: 'ubuntu-24.04' # ort's prebuilt ONNX Runtime needs glibc >= 2.38
             args: ''
             rust-targets: ''
           - platform: 'windows-latest'
@@ -84,7 +84,7 @@ jobs:
 
             - **Windows**: `.msi` or `-setup.exe` (NSIS). SmartScreen will warn on first run (unsigned build): "More info" -> "Run anyway".
             - **macOS**: `.dmg` (`aarch64` = Apple Silicon, `x64` = Intel). Not notarized: approve under System Settings -> Privacy & Security -> "Open Anyway", or run `xattr -cr /Applications/resume-builder.app`.
-            - **Linux**: `.AppImage` (portable), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE).
+            - **Linux**: `.AppImage` (portable), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE). Requires glibc 2.38+ (Ubuntu 24.04+, Debian 13+, Fedora 39+).
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

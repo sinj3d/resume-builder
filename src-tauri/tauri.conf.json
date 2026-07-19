@@ -24,6 +24,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
     "resources": {
       "resources/model/*": "model/"
     },
