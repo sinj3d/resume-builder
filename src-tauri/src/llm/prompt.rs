@@ -8,7 +8,7 @@
 
 /// The prompt split into chat roles: `system` carries the policy, `user` the
 /// task. Local generation feeds these through the model's chat template; cloud
-/// mode and the UI's prompt display join them via `build_prompt`.
+/// mode and the UI's prompt display join them via `joined()`.
 pub struct PromptParts {
     pub system: String,
     pub user: String,
@@ -109,21 +109,19 @@ Write a compelling, personalized cover letter that:
     }
 }
 
-/// Single-string form of the prompt, used for cloud generation and the UI's
-/// prompt display. Byte-identical to the pre-template-feature prompt when
-/// `template` is `None`.
-pub fn build_prompt(
-    retrieved_bullets: &[String],
-    job_description: &str,
-    template: Option<&str>,
-    candidate_name: Option<&str>,
-) -> String {
-    build_prompt_parts(retrieved_bullets, job_description, template, candidate_name).joined()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Single-string form as cloud mode and the UI display produce it.
+    fn build_prompt(
+        retrieved_bullets: &[String],
+        job_description: &str,
+        template: Option<&str>,
+        candidate_name: Option<&str>,
+    ) -> String {
+        build_prompt_parts(retrieved_bullets, job_description, template, candidate_name).joined()
+    }
 
     const GOLDEN_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/llm/golden");
 
