@@ -21,8 +21,16 @@ Built with **Tauri 2** (Rust backend) + **React 19 / TypeScript / Vite / Tailwin
 - **Offline resume import** — parse an existing PDF resume into structured
   experiences using a **specialized local model** that downloads once and then runs
   fully offline (no cloud, no API key). See below.
-- **Cover letters** — RAG-grounded generation via a local GGUF model or, optionally,
-  the Gemini cloud API.
+- **Cover letters** — RAG-grounded, zero-hallucination generation via a local GGUF
+  model (a **purpose-fine-tuned model** ships from this repo's pipeline — see below)
+  or, optionally, the Gemini cloud API.
+- **Cover letter templates** — pick a structural template (T-format, narrative,
+  problem–solution, …) or write your own on the Templates page; the generator
+  follows its structure, length, and tone. Seven builtins are seeded on first run.
+- **Fine-tuning pipeline** — [`training/`](training/README.md) builds a generic,
+  drop-in cover-letter model: real scraped job postings, teacher-distilled letters
+  (Claude via the Batch API), QLoRA on Qwen2.5-3B, exported to a ~1.8 GB GGUF that
+  runs on 8 GB machines.
 
 ## Local-first & privacy
 
@@ -35,7 +43,7 @@ Everything that touches your resume content runs on-device:
 | **Resume PDF import** | **Local specialized parser model, auto-downloaded on first use**   |
 | PDF preview           | Self-hosted pdf.js worker (bundled — no CDN)                        |
 | LaTeX compile         | Tectonic binary, auto-downloaded on first use                      |
-| Cover letters         | Local GGUF by default; Gemini cloud is opt-in                      |
+| Cover letters         | Local fine-tuned GGUF by default; Gemini cloud is opt-in           |
 
 The only network calls are one-time downloads (the Tectonic binary and the parser
 model) and — only if you explicitly choose cloud mode — cover-letter generation.
@@ -55,6 +63,39 @@ Relevant code:
 - [`src-tauri/src/llm/parse.rs`](src-tauri/src/llm/parse.rs) — parser prompt + JSON recovery/validation
 - [`src-tauri/src/llm/model.rs`](src-tauri/src/llm/model.rs) — parser-model auto-download
 - [`src-tauri/src/llm/commands.rs`](src-tauri/src/llm/commands.rs) — `extract_resume_pdf` (local-only)
+
+### Template-conditioned cover letters & the fine-tuned model
+
+Cover letter generation is **template-conditioned**: the prompt carries the
+selected template's structure alongside the RAG-retrieved bullets and the job
+description, under a strict zero-hallucination policy (the model may only use
+the experiences it is given). Templates are plain text managed on the Templates
+page — adding a new one changes output immediately, no retraining.
+
+The [`training/`](training/README.md) pipeline produces a small local model
+specialized for exactly this prompt. It is a **generic, drop-in artifact** — no
+user data is involved in training:
+
+1. Real job postings are scraped from public job-board APIs (RemoteOK,
+   Greenhouse, Lever).
+2. A teacher model (Claude, via the Message Batches API) writes gold letters
+   for fictional candidate profiles whose bullets pass through the **same
+   embedding retrieval the app uses**, so training inputs match inference
+   exactly. Every letter passes mechanical quality filters plus an LLM
+   fabrication check.
+3. QLoRA fine-tunes Qwen2.5-3B-Instruct, which is merged and quantized to a
+   **Q4_K_M GGUF (~1.8 GB)** that generates a letter in ~30 s on CPU.
+
+The prompt format is a byte-level contract between the app and the pipeline:
+[`llm/prompt.rs`](src-tauri/src/llm/prompt.rs) and
+[`training/prompt_builder.py`](training/prompt_builder.py) are both asserted
+against shared golden files (`cargo test golden` /
+`python prompt_builder.py --selftest`), because a drifted training prompt
+silently degrades the model. Local generation feeds the GGUF's own embedded
+chat template, matching how the model was trained.
+
+Point **Settings → Local (GGUF)** at any tuned model file to use it; any other
+Qwen-style instruct GGUF also works untuned.
 
 ## Getting started
 
@@ -81,8 +122,9 @@ npm run tauri build
 
 ## Testing
 
-Backend unit + integration tests (DB, RAG, LaTeX injection, and the resume parser's
-prompt/JSON-recovery logic):
+Backend unit + integration tests (DB, RAG, LaTeX injection, the resume parser's
+prompt/JSON-recovery logic, and the cover-letter prompt golden files that keep
+the app and the training pipeline byte-identical):
 
 ```bash
 cd src-tauri
@@ -107,13 +149,16 @@ cargo test --no-default-features llm::parse   # skips building the local-LLM eng
 
 ```
 src/                     React frontend
-  pages/                 Experiences, Archetypes, Generate, Latex, Bio, Onboarding, Settings
+  pages/                 Experiences, Archetypes, Generate, Templates, Latex, Bio,
+                         Onboarding, Settings
   lib/tauri.ts           Typed wrappers over Tauri commands
 src-tauri/src/
-  db/                    SQLite schema, models, CRUD commands
+  db/                    SQLite schema, models, CRUD commands, builtin template seeds
   rag/                   ONNX embedding model + vector search
-  llm/                   Cover letters, settings, and the local resume parser
+  llm/                   Cover letters, settings, local resume parser, prompt golden files
   latex/                 Templates, injection, Tectonic download & compile
+training/                Fine-tuning pipeline (scrape → distill → QLoRA → GGUF);
+                         see training/README.md
 ```
 
 ## Recommended IDE setup
