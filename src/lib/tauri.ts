@@ -43,9 +43,14 @@ export interface CreateSkillInput {
   name: string;
 }
 
-export interface ScoredBullet {
-  bullet: BulletPoint;
+export interface RetrievedBullet {
+  id: number;
+  experience_id: number;
+  content: string;
+  sort_order: number;
   score: number;
+  vector_distance: number | null;
+  keyword_rank: number | null;
 }
 
 export interface LLMSettings {
@@ -126,8 +131,8 @@ export const getArchetypeSkills = (archetype_id: number) =>
   invoke<Skill[]>('get_archetype_skills', { archetypeId: archetype_id });
 
 // RAG Commands
-export const searchSimilar = (job_description: string, archetype_id: number, top_k: number) =>
-  invoke<ScoredBullet[]>('search_similar', { jobDescription: job_description, archetypeId: archetype_id, topK: top_k });
+export const searchSimilar = (query: string, archetype_id: number, top_k: number) =>
+  invoke<RetrievedBullet[]>('search_similar', { query, archetypeId: archetype_id, topK: top_k });
 
 // LLM Commands
 export const generateCoverLetter = (jd: string, archetype_id: number | null, top_k: number, template_id: number | null) =>

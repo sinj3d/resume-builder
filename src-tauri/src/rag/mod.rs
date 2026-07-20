@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod retrieval;
 
 use ndarray::Array2;
 use ort::session::Session;

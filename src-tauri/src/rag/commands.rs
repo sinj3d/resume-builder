@@ -1,21 +1,11 @@
-use serde::Serialize;
 use tauri::State;
 
 use crate::db::DbState;
+use crate::rag::retrieval::RetrievedBullet;
 use crate::rag::EmbeddingState;
 
-/// A bullet point with its similarity score, returned by `search_similar`.
-#[derive(Debug, Serialize)]
-pub struct ScoredBullet {
-    pub id: i64,
-    pub experience_id: i64,
-    pub content: String,
-    pub sort_order: i32,
-    pub distance: f32,
-}
-
 /// Convert a `Vec<f32>` to its raw byte representation for sqlite-vec.
-fn vec_to_bytes(v: &[f32]) -> Vec<u8> {
+pub(crate) fn vec_to_bytes(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
@@ -109,7 +99,7 @@ pub fn embed_all_bullets(
     embed_missing(&conn, &mut model)
 }
 
-/// Semantic search: embed the query text and find the most similar bullet points.
+/// Hybrid search: semantic KNN + FTS5 keyword search fused with RRF.
 /// Optionally filter by archetype.
 #[tauri::command]
 pub fn search_similar(
@@ -118,88 +108,16 @@ pub fn search_similar(
     query: String,
     archetype_id: Option<i64>,
     top_k: Option<i32>,
-) -> Result<Vec<ScoredBullet>, String> {
+) -> Result<Vec<RetrievedBullet>, String> {
     let conn = db_state.0.lock().map_err(|e| e.to_string())?;
     let mut model = emb_state.0.lock().map_err(|e| e.to_string())?;
 
-    let k = top_k.unwrap_or(10);
-
-    // Self-heal: bullets created without an explicit embed step still search.
-    embed_missing(&conn, &mut model)?;
-
-    // Embed the query
-    let query_embedding = model
-        .embed(&query)
-        .map_err(|e| format!("Query embedding failed: {}", e))?;
-
-    let query_bytes = vec_to_bytes(&query_embedding);
-
-    // KNN query against vec0 table. The neighbor pool is fetched wide and
-    // filtered afterwards so an archetype filter can't starve the results;
-    // the filter accepts bullets tagged directly OR belonging to a tagged
-    // experience (the UI mostly tags whole experiences).
-    const KNN_POOL: i64 = 256;
-    let results = if let Some(arch_id) = archetype_id.filter(|id| *id > 0) {
-        let mut stmt = conn
-            .prepare(
-                "SELECT be.bullet_id, be.distance, bp.experience_id, bp.content, bp.sort_order
-                 FROM bullet_embeddings be
-                 INNER JOIN bullet_points bp ON bp.id = be.bullet_id
-                 WHERE be.embedding MATCH ?1
-                   AND k = ?2
-                   AND (
-                        bp.experience_id IN
-                            (SELECT experience_id FROM archetype_experiences WHERE archetype_id = ?3)
-                     OR bp.id IN
-                            (SELECT bullet_point_id FROM archetype_bullets WHERE archetype_id = ?3)
-                   )
-                 ORDER BY be.distance
-                 LIMIT ?4",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let rows: Vec<ScoredBullet> = stmt
-            .query_map(rusqlite::params![query_bytes, KNN_POOL, arch_id, k], |row| {
-                Ok(ScoredBullet {
-                    id: row.get(0)?,
-                    distance: row.get(1)?,
-                    experience_id: row.get(2)?,
-                    content: row.get(3)?,
-                    sort_order: row.get(4)?,
-                })
-            })
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect();
-        rows
-    } else {
-        let mut stmt = conn
-            .prepare(
-                "SELECT be.bullet_id, be.distance, bp.experience_id, bp.content, bp.sort_order
-                 FROM bullet_embeddings be
-                 INNER JOIN bullet_points bp ON bp.id = be.bullet_id
-                 WHERE be.embedding MATCH ?1
-                   AND k = ?2
-                 ORDER BY be.distance
-                 LIMIT ?3",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let rows: Vec<ScoredBullet> = stmt
-            .query_map(rusqlite::params![query_bytes, KNN_POOL, k], |row| {
-                Ok(ScoredBullet {
-                    id: row.get(0)?,
-                    distance: row.get(1)?,
-                    experience_id: row.get(2)?,
-                    content: row.get(3)?,
-                    sort_order: row.get(4)?,
-                })
-            })
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect();
-        rows
-    };
-
-    Ok(results)
+    // Archetype 0 is the frontend's "Any / General" choice — no filter.
+    crate::rag::retrieval::retrieve_hybrid(
+        &conn,
+        &mut model,
+        &query,
+        archetype_id.filter(|id| *id > 0),
+        top_k.unwrap_or(10) as i64,
+    )
 }

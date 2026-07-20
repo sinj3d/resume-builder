@@ -29,7 +29,7 @@ pub fn init_db(db_path: &str) -> Result<Connection, Box<dyn std::error::Error>> 
 }
 
 /// Run all schema migrations.
-fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
+pub(crate) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS experiences (
@@ -133,6 +133,30 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             is_builtin INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS bullet_fts USING fts5(
+            content, content='bullet_points', content_rowid='id', tokenize='porter unicode61');
+
+        CREATE TRIGGER IF NOT EXISTS bullet_fts_ai AFTER INSERT ON bullet_points BEGIN
+            INSERT INTO bullet_fts(rowid, content) VALUES (new.id, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS bullet_fts_ad AFTER DELETE ON bullet_points BEGIN
+            INSERT INTO bullet_fts(bullet_fts, rowid, content) VALUES ('delete', old.id, old.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS bullet_fts_au AFTER UPDATE OF content ON bullet_points BEGIN
+            INSERT INTO bullet_fts(bullet_fts, rowid, content) VALUES ('delete', old.id, old.content);
+            INSERT INTO bullet_fts(rowid, content) VALUES (new.id, new.content);
+        END;
+
+        -- Embedding hygiene: without these, editing a bullet leaves a stale
+        -- vector and deleting one (directly or via experience cascade) leaves
+        -- an orphan — embed_missing only fills rows that are absent.
+        CREATE TRIGGER IF NOT EXISTS bullet_emb_ad AFTER DELETE ON bullet_points BEGIN
+            DELETE FROM bullet_embeddings WHERE bullet_id = old.id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS bullet_emb_au AFTER UPDATE OF content ON bullet_points BEGIN
+            DELETE FROM bullet_embeddings WHERE bullet_id = old.id;
+        END;
         "
     )?;
 
@@ -153,6 +177,37 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         }
         conn.execute(
             "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('builtin_templates_seeded', '1')",
+            [],
+        )?;
+    }
+
+    // One-time FTS backfill: the triggers only cover writes made after they
+    // exist, so databases upgraded from older versions need a full rebuild.
+    let fts_backfilled: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM app_settings WHERE key = 'bullet_fts_backfilled_v1'",
+        [],
+        |row| row.get(0),
+    )?;
+    if fts_backfilled == 0 {
+        conn.execute("INSERT INTO bullet_fts(bullet_fts) VALUES ('rebuild')", [])?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('bullet_fts_backfilled_v1', '1')",
+            [],
+        )?;
+    }
+
+    // One-time embedding wipe: bullets edited before the hygiene triggers
+    // existed may have stale vectors, and there is no content hash to tell
+    // which. embed_missing re-embeds everything lazily on the next retrieval.
+    let embeddings_reset: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM app_settings WHERE key = 'embeddings_reset_v1'",
+        [],
+        |row| row.get(0),
+    )?;
+    if embeddings_reset == 0 {
+        conn.execute("DELETE FROM bullet_embeddings", [])?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('embeddings_reset_v1', '1')",
             [],
         )?;
     }
@@ -410,6 +465,130 @@ mod tests {
         ).unwrap();
     }
 
+
+    #[test]
+    fn test_fts_sync_insert_update_delete_cascade() {
+        let conn = test_conn();
+        run_migrations(&conn).unwrap();
+
+        let fts_hits = |q: &str| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM bullet_fts WHERE bullet_fts MATCH ?1",
+                [q],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+
+        conn.execute(
+            "INSERT INTO experiences (title, category) VALUES ('Job', 'job')",
+            [],
+        )
+        .unwrap();
+        let exp_id = conn.last_insert_rowid();
+
+        // INSERT is indexed.
+        conn.execute(
+            "INSERT INTO bullet_points (experience_id, content, sort_order) VALUES (?1, 'Deployed kubernetes clusters', 0)",
+            [exp_id],
+        )
+        .unwrap();
+        let bullet_id = conn.last_insert_rowid();
+        assert_eq!(fts_hits("kubernetes"), 1);
+
+        // UPDATE re-indexes: old term gone, new term found.
+        conn.execute(
+            "UPDATE bullet_points SET content = 'Wrote terraform modules' WHERE id = ?1",
+            [bullet_id],
+        )
+        .unwrap();
+        assert_eq!(fts_hits("kubernetes"), 0);
+        assert_eq!(fts_hits("terraform"), 1);
+
+        // Direct DELETE de-indexes.
+        conn.execute("DELETE FROM bullet_points WHERE id = ?1", [bullet_id]).unwrap();
+        assert_eq!(fts_hits("terraform"), 0);
+
+        // Experience cascade-delete also de-indexes (FK cascade fires the
+        // AFTER DELETE trigger on bullet_points).
+        conn.execute(
+            "INSERT INTO bullet_points (experience_id, content, sort_order) VALUES (?1, 'Optimized postgres queries', 0)",
+            [exp_id],
+        )
+        .unwrap();
+        assert_eq!(fts_hits("postgres"), 1);
+        conn.execute("DELETE FROM experiences WHERE id = ?1", [exp_id]).unwrap();
+        assert_eq!(fts_hits("postgres"), 0);
+
+        // The external-content index must be internally consistent.
+        conn.execute(
+            "INSERT INTO bullet_fts(bullet_fts, rank) VALUES('integrity-check', 1)",
+            [],
+        )
+        .unwrap();
+    }
+
+    /// Go/no-go for the embedding-hygiene triggers: DELETEs against a vec0
+    /// virtual table must work from inside bullet_points triggers, including
+    /// when the trigger itself fires via FK cascade. If this ever breaks,
+    /// fall back to explicit DELETEs in db::commands (update_bullet,
+    /// delete_bullet, delete_experience).
+    #[test]
+    fn test_embedding_triggers_on_vec0() {
+        let conn = test_conn();
+        run_migrations(&conn).unwrap();
+
+        let emb_count = || -> i64 {
+            conn.query_row("SELECT COUNT(*) FROM bullet_embeddings", [], |row| row.get(0))
+                .unwrap()
+        };
+        let fake_embedding: Vec<f32> = (0..384).map(|i| (i as f32) / 384.0).collect();
+        let bytes: Vec<u8> = fake_embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
+
+        conn.execute(
+            "INSERT INTO experiences (title, category) VALUES ('Job', 'job')",
+            [],
+        )
+        .unwrap();
+        let exp_id = conn.last_insert_rowid();
+
+        let insert_bullet_with_embedding = |content: &str| -> i64 {
+            conn.execute(
+                "INSERT INTO bullet_points (experience_id, content, sort_order) VALUES (?1, ?2, 0)",
+                rusqlite::params![exp_id, content],
+            )
+            .unwrap();
+            let id = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO bullet_embeddings (bullet_id, embedding) VALUES (?1, ?2)",
+                rusqlite::params![id, bytes.clone()],
+            )
+            .unwrap();
+            id
+        };
+
+        // Content UPDATE drops the now-stale vector.
+        let b1 = insert_bullet_with_embedding("original text");
+        assert_eq!(emb_count(), 1);
+        conn.execute(
+            "UPDATE bullet_points SET content = 'edited text' WHERE id = ?1",
+            [b1],
+        )
+        .unwrap();
+        assert_eq!(emb_count(), 0, "stale vector must be dropped on content edit");
+
+        // Direct DELETE drops the vector.
+        let b2 = insert_bullet_with_embedding("to be deleted");
+        assert_eq!(emb_count(), 1);
+        conn.execute("DELETE FROM bullet_points WHERE id = ?1", [b2]).unwrap();
+        assert_eq!(emb_count(), 0, "orphan vector must be dropped on bullet delete");
+
+        // Experience cascade-delete drops the vector too.
+        insert_bullet_with_embedding("cascade victim");
+        assert_eq!(emb_count(), 1);
+        conn.execute("DELETE FROM experiences WHERE id = ?1", [exp_id]).unwrap();
+        assert_eq!(emb_count(), 0, "orphan vector must be dropped on experience cascade");
+    }
 
     #[test]
     fn test_vec0_embedding_insert_and_query() {

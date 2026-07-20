@@ -17,20 +17,13 @@ pub struct GenerationResult {
 /// instead of the generic error banner.
 pub const NO_MATCHES_PREFIX: &str = "NO_MATCHES::";
 
-/// KNN over-fetch size: the nearest neighbors are fetched wide and then
-/// filtered by archetype, so a tag filter can never starve the results just
-/// because the globally-nearest bullets belong to other archetypes.
-const KNN_POOL: i64 = 256;
-
 /// Generate a cover letter from a job description using RAG + LLM.
 ///
-/// 1. Embed any bullets that are missing embeddings (self-healing).
-/// 2. Embed the JD and retrieve the top-k most relevant bullets. The archetype
-///    filter accepts bullets tagged directly OR belonging to a tagged
-///    experience (the UI mostly tags whole experiences).
-/// 3. Build a zero-hallucination prompt (optionally conditioned on a cover
+/// 1. Retrieve the top-k most relevant bullets via hybrid search (semantic
+///    KNN + FTS5 keyword, RRF-fused; self-heals missing embeddings first).
+/// 2. Build a zero-hallucination prompt (optionally conditioned on a cover
 ///    letter template) and send it to the active provider.
-/// 4. Prepend the bio contact header and persist the letter to history.
+/// 3. Prepend the bio contact header and persist the letter to history.
 #[tauri::command]
 pub async fn generate_cover_letter(
     db_state: State<'_, DbState>,
@@ -47,66 +40,16 @@ pub async fn generate_cover_letter(
     // Template 0 is the frontend's "No template (default)" choice.
     let tmpl_filter = template_id.filter(|id| *id > 0);
 
-    // Steps 1+2: ensure embeddings exist, then retrieve relevant bullets.
+    // Step 1: retrieve relevant bullets via hybrid search.
     let (bullets, bio, template) = {
         let mut model = emb_state.0.lock().map_err(|e| e.to_string())?;
         let conn = db_state.0.lock().map_err(|e| e.to_string())?;
 
-        crate::rag::commands::embed_missing(&conn, &mut model)?;
-
-        let query_embedding = model
-            .embed(&job_description)
-            .map_err(|e| format!("Embedding failed: {}", e))?;
-
-        let query_bytes: Vec<u8> = query_embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
-
-        let bullets: Vec<String> = if let Some(arch_id) = arch_filter {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT bp.content
-                     FROM bullet_embeddings be
-                     INNER JOIN bullet_points bp ON bp.id = be.bullet_id
-                     WHERE be.embedding MATCH ?1
-                       AND k = ?2
-                       AND (
-                            bp.experience_id IN
-                                (SELECT experience_id FROM archetype_experiences WHERE archetype_id = ?3)
-                         OR bp.id IN
-                                (SELECT bullet_point_id FROM archetype_bullets WHERE archetype_id = ?3)
-                       )
-                     ORDER BY be.distance
-                     LIMIT ?4",
-                )
-                .map_err(|e| e.to_string())?;
-
-            let rows: Vec<String> = stmt
-                .query_map(rusqlite::params![query_bytes, KNN_POOL, arch_id, k], |row| {
-                    row.get(0)
-                })
-                .map_err(|e| e.to_string())?
-                .filter_map(|r| r.ok())
+        let bullets: Vec<String> =
+            crate::rag::retrieval::retrieve_hybrid(&conn, &mut model, &job_description, arch_filter, k)?
+                .into_iter()
+                .map(|b| b.content)
                 .collect();
-            rows
-        } else {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT bp.content
-                     FROM bullet_embeddings be
-                     INNER JOIN bullet_points bp ON bp.id = be.bullet_id
-                     WHERE be.embedding MATCH ?1
-                       AND k = ?2
-                     ORDER BY be.distance
-                     LIMIT ?3",
-                )
-                .map_err(|e| e.to_string())?;
-
-            let rows: Vec<String> = stmt
-                .query_map(rusqlite::params![query_bytes, KNN_POOL, k], |row| row.get(0))
-                .map_err(|e| e.to_string())?
-                .filter_map(|r| r.ok())
-                .collect();
-            rows
-        };
 
         let bio: crate::db::models::Bio = conn
             .query_row(
@@ -166,7 +109,7 @@ pub async fn generate_cover_letter(
         ));
     }
 
-    // Step 3: Build the prompt (system/user parts; local mode feeds them through
+    // Step 2: Build the prompt (system/user parts; local mode feeds them through
     // the model's chat template, cloud mode and the UI use the joined string).
     let parts = crate::llm::prompt::build_prompt_parts(
         &bullets,
@@ -211,7 +154,7 @@ pub async fn generate_cover_letter(
         }
     };
 
-    // Step 4: Prepend the contact header deterministically (never trust the
+    // Step 3: Prepend the contact header deterministically (never trust the
     // model with contact details), then persist to history.
     let mut header_lines: Vec<String> = Vec::new();
     if let Some(name) = bio.name.as_deref().filter(|s| !s.is_empty()) {
