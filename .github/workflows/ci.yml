@@ -26,7 +26,7 @@ jobs:
       - run: npm run build # tsc && vite build
 
   rust:
-    name: Rust (cargo check)
+    name: Rust (cargo test)
     runs-on: ubuntu-24.04 # match the release Linux runner; ort's prebuilt ONNX Runtime needs glibc >= 2.38
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +45,17 @@ jobs:
       # time; an empty dir suffices for cargo check.
       - name: Create empty frontend dist
         run: mkdir -p dist
-      - name: cargo check
+      - name: cargo test (LaTeX tests are Windows-only + network-bound; run locally)
         working-directory: src-tauri
-        run: cargo check --locked
+        run: cargo test --locked -- --skip latex::
+
+  prompt-parity:
+    name: Prompt parity (python selftest)
+    runs-on: ubuntu-latest
+    env:
+      RESUME_DB: /tmp/resume_builder.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python training/prompt_builder.py --selftest
