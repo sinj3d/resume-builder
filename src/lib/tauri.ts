@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, Channel } from '@tauri-apps/api/core';
 
 export interface Experience {
   id: number;
@@ -64,7 +64,15 @@ export interface GenerationResult {
   cover_letter: string;
   bullets_used: string[];
   prompt: string;
+  cover_letter_id: number;
 }
+
+/** Progress events streamed while a cover letter generates. The awaited
+ *  promise still delivers the final `GenerationResult`; these only carry
+ *  progress (retrieved bullets, then raw body chunks). */
+export type GenerationEvent =
+  | { event: 'started'; data: { bulletsUsed: string[] } }
+  | { event: 'token'; data: { chunk: string } };
 
 // Database Commands
 export const listExperiences = () => invoke<Experience[]>('list_experiences');
@@ -135,8 +143,20 @@ export const searchSimilar = (query: string, archetype_id: number, top_k: number
   invoke<RetrievedBullet[]>('search_similar', { query, archetypeId: archetype_id, topK: top_k });
 
 // LLM Commands
-export const generateCoverLetter = (jd: string, archetype_id: number | null, top_k: number, template_id: number | null) =>
-  invoke<GenerationResult>('generate_cover_letter', { jobDescription: jd, archetypeId: archetype_id, topK: top_k, templateId: template_id });
+export const generateCoverLetter = (
+  jd: string,
+  archetype_id: number | null,
+  top_k: number,
+  template_id: number | null,
+  onEvent: (e: GenerationEvent) => void,
+) => {
+  const channel = new Channel<GenerationEvent>();
+  channel.onmessage = onEvent;
+  return invoke<GenerationResult>('generate_cover_letter', {
+    jobDescription: jd, archetypeId: archetype_id, topK: top_k, templateId: template_id,
+    onEvent: channel,
+  });
+};
 
 // Cover letter templates
 export interface CoverLetterTemplate {

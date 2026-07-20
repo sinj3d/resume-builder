@@ -15,6 +15,8 @@ export default function GeneratePage() {
     const [selectedTemplate, setSelectedTemplate] = useState<number>(0);
     const [jd, setJd] = useState('');
     const [result, setResult] = useState<GenerationResult | null>(null);
+    const [streamText, setStreamText] = useState('');
+    const [streamBullets, setStreamBullets] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [noMatchMessage, setNoMatchMessage] = useState<string | null>(null);
@@ -44,10 +46,18 @@ export default function GeneratePage() {
         setLoading(true);
         setError(null);
         setResult(null);
+        setStreamText('');
+        setStreamBullets([]);
         setViewingHistoryId(null);
 
         try {
-            const res = await generateCoverLetter(jd, selectedArchetype || null, 8, selectedTemplate || null);
+            const res = await generateCoverLetter(jd, selectedArchetype || null, 8, selectedTemplate || null, e => {
+                if (e.event === 'started') {
+                    setStreamBullets(e.data.bulletsUsed);
+                } else {
+                    setStreamText(prev => prev + e.data.chunk);
+                }
+            });
             setResult(res);
             loadHistory();
         } catch (err) {
@@ -64,7 +74,9 @@ export default function GeneratePage() {
     };
 
     const viewHistoryEntry = (entry: CoverLetter) => {
-        setResult({ cover_letter: entry.content, bullets_used: [], prompt: '' });
+        setResult({ cover_letter: entry.content, bullets_used: [], prompt: '', cover_letter_id: entry.id });
+        setStreamText('');
+        setStreamBullets([]);
         setViewingHistoryId(entry.id);
         setError(null);
     };
@@ -260,19 +272,19 @@ export default function GeneratePage() {
                         </div>
 
                         <div className="flex-1 p-0 overflow-hidden relative">
-                            {result ? (
+                            {result || streamText || streamBullets.length > 0 ? (
                                 <div className="absolute inset-0 overflow-y-auto p-6 flex flex-col gap-6">
                                     <div className="prose dark:prose-invert max-w-none">
                                         <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 p-6 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                                            {result.cover_letter}
+                                            {result ? result.cover_letter : streamText}
                                         </div>
                                     </div>
 
-                                    {result.bullets_used.length > 0 && (
+                                    {(result ? result.bullets_used : streamBullets).length > 0 && (
                                         <div>
                                             <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">Retrieved Experiences Used</h3>
                                             <ul className="flex flex-col gap-2">
-                                                {result.bullets_used.map((b, i) => (
+                                                {(result ? result.bullets_used : streamBullets).map((b, i) => (
                                                     <li key={i} className="text-xs text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700">
                                                         {b}
                                                     </li>

@@ -106,11 +106,15 @@ enum LocalInput<'a> {
 /// trained on.
 ///
 /// Only available when compiled with the `local-llm` feature.
+///
+/// `on_token` is called with each decoded piece as it is generated, letting
+/// callers stream progress; the full output is still returned at the end.
 #[cfg(feature = "local-llm")]
 fn run_local_generation(
     input: LocalInput,
     gguf_path: &str,
     max_tokens: i32,
+    mut on_token: impl FnMut(&str),
 ) -> Result<String, String> {
     use llama_cpp_2::llama_backend::LlamaBackend;
     use llama_cpp_2::model::LlamaModel;
@@ -217,6 +221,7 @@ fn run_local_generation(
         let piece = model.token_to_piece(token, &mut decoder, true, None)
             .map_err(|e| format!("Token to piece failed: {}", e))?;
         output.push_str(&piece);
+        on_token(&piece);
 
         batch.clear();
         batch.add(token, n_cur, &[0], true)
@@ -233,21 +238,32 @@ fn run_local_generation(
 
 /// Generate a cover letter with a user-supplied local GGUF model. The
 /// system/user parts are formatted with the model's own chat template.
+/// `on_token` streams each generated piece to the caller.
 #[cfg(feature = "local-llm")]
-pub fn generate_local_chat(system: &str, user: &str, gguf_path: &str) -> Result<String, String> {
-    run_local_generation(LocalInput::Chat { system, user }, gguf_path, 1024)
+pub fn generate_local_chat(
+    system: &str,
+    user: &str,
+    gguf_path: &str,
+    on_token: impl FnMut(&str),
+) -> Result<String, String> {
+    run_local_generation(LocalInput::Chat { system, user }, gguf_path, 1024, on_token)
 }
 
 /// Parse a resume with the specialized, auto-downloaded parser model.
 /// Uses a larger output budget and ChatML (no BOS) since the model is a chat model.
 #[cfg(feature = "local-llm")]
 pub fn generate_local_parse(prompt: &str, gguf_path: &str) -> Result<String, String> {
-    run_local_generation(LocalInput::Raw { prompt, add_bos: false }, gguf_path, 2048)
+    run_local_generation(LocalInput::Raw { prompt, add_bos: false }, gguf_path, 2048, |_| {})
 }
 
 /// Stub for when the local-llm feature is not enabled.
 #[cfg(not(feature = "local-llm"))]
-pub fn generate_local_chat(_system: &str, _user: &str, _gguf_path: &str) -> Result<String, String> {
+pub fn generate_local_chat(
+    _system: &str,
+    _user: &str,
+    _gguf_path: &str,
+    _on_token: impl FnMut(&str),
+) -> Result<String, String> {
     Err("Local LLM support is not enabled. Recompile with `--features local-llm` (requires cmake).".to_string())
 }
 

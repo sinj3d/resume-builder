@@ -11,6 +11,21 @@ pub struct GenerationResult {
     pub cover_letter: String,
     pub bullets_used: Vec<String>,
     pub prompt: String,
+    pub cover_letter_id: i64,
+}
+
+/// Progress events streamed over an IPC channel while a letter generates.
+/// The awaited command promise still delivers the final `GenerationResult`
+/// (with the contact header prepended and the letter persisted); the channel
+/// only carries progress — `Started` fires the moment retrieval finishes,
+/// `Token` carries raw body chunks as the model produces them.
+#[derive(Clone, Serialize)]
+#[serde(tag = "event", content = "data", rename_all = "camelCase")]
+pub enum GenerationEvent {
+    #[serde(rename_all = "camelCase")]
+    Started { bullets_used: Vec<String> },
+    #[serde(rename_all = "camelCase")]
+    Token { chunk: String },
 }
 
 /// Error prefix the frontend uses to show a "don't waste your time" popup
@@ -33,6 +48,7 @@ pub async fn generate_cover_letter(
     archetype_id: Option<i64>,
     top_k: Option<i32>,
     template_id: Option<i64>,
+    on_event: tauri::ipc::Channel<GenerationEvent>,
 ) -> Result<GenerationResult, String> {
     let k = top_k.unwrap_or(10) as i64;
     // Archetype 0 is the frontend's "Any / General" choice — no filter.
@@ -109,6 +125,12 @@ pub async fn generate_cover_letter(
         ));
     }
 
+    // Progress events are best-effort: a closed webview must not fail a
+    // generation that will still be persisted to history.
+    let _ = on_event.send(GenerationEvent::Started {
+        bullets_used: bullets.clone(),
+    });
+
     // Step 2: Build the prompt (system/user parts; local mode feeds them through
     // the model's chat template, cloud mode and the UI use the joined string).
     let parts = crate::llm::prompt::build_prompt_parts(
@@ -133,8 +155,13 @@ pub async fn generate_cover_letter(
             // thread to keep the async runtime responsive (same pattern as
             // extract_resume_pdf).
             let (system, user) = (parts.system.clone(), parts.user.clone());
+            let channel = on_event.clone();
             tauri::async_runtime::spawn_blocking(move || {
-                crate::llm::generate_local_chat(&system, &user, &path)
+                crate::llm::generate_local_chat(&system, &user, &path, |piece| {
+                    let _ = channel.send(GenerationEvent::Token {
+                        chunk: piece.to_string(),
+                    });
+                })
             })
             .await
             .map_err(|e| format!("Local generation task failed to run: {}", e))??
@@ -148,9 +175,13 @@ pub async fn generate_cover_letter(
                 .cloud_model
                 .as_deref()
                 .unwrap_or("gemini-2.5-flash");
-            crate::llm::generate_cloud(&prompt, key, model_name)
+            let body = crate::llm::generate_cloud(&prompt, key, model_name)
                 .await
-                .map_err(|e| format!("Cloud generation failed: {}", e))?
+                .map_err(|e| format!("Cloud generation failed: {}", e))?;
+            // Gemini is called non-streaming; deliver the body as one chunk so
+            // the frontend has a single code path.
+            let _ = on_event.send(GenerationEvent::Token { chunk: body.clone() });
+            body
         }
     };
 
@@ -176,19 +207,21 @@ pub async fn generate_cover_letter(
         format!("{}\n\n{}", header_lines.join("\n"), letter_body.trim())
     };
 
-    {
+    let cover_letter_id = {
         let conn = db_state.0.lock().map_err(|e| e.to_string())?;
         conn.execute(
             "INSERT INTO cover_letters (archetype_id, job_description, content) VALUES (?1, ?2, ?3)",
             rusqlite::params![arch_filter, job_description, cover_letter],
         )
         .map_err(|e| format!("Failed to save cover letter to history: {}", e))?;
-    }
+        conn.last_insert_rowid()
+    };
 
     Ok(GenerationResult {
         cover_letter,
         bullets_used: bullets,
         prompt,
+        cover_letter_id,
     })
 }
 
