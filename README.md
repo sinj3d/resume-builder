@@ -105,8 +105,8 @@ currently **unsigned**, so each OS shows a one-time warning:
 
 - **Windows** — download the `.msi` or `-setup.exe`. If SmartScreen warns, click
   **More info → Run anyway**.
-- **macOS** — download the `.dmg` for your chip (`aarch64` = Apple Silicon,
-  `x64` = Intel). The app is not notarized: on first launch approve it under
+- **macOS** — download the `.dmg` (Apple Silicon / M1 or later; for Intel Macs
+  build from source). The app is not notarized: on first launch approve it under
   **System Settings → Privacy & Security → Open Anyway**, or run
   `xattr -cr /Applications/resume-builder.app`.
 - **Linux** — download the `.AppImage` (then `chmod +x` it), or install the

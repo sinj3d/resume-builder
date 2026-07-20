@@ -29,17 +29,17 @@ Publish.
    git push origin vX.Y.Z
    ```
 
-5. Watch the **Release** workflow under the Actions tab. All 4 matrix jobs upload
+5. Watch the **Release** workflow under the Actions tab. All 3 matrix jobs upload
    into one draft release. Cold builds can take 30–45 min per platform — long
    quiet periods during the llama.cpp CMake build and the ONNX Runtime download
    are normal, not hangs.
-6. Go to **Releases** → the draft → verify the assets (~9 files):
+6. Go to **Releases** → the draft → verify the assets (~7 files):
 
    | Platform | Assets |
    | --- | --- |
    | Windows | `resume-builder_X.Y.Z_x64_en-US.msi`, `resume-builder_X.Y.Z_x64-setup.exe` |
    | Linux | `.AppImage`, `.deb`, `.rpm` |
-   | macOS | `_aarch64.dmg`, `_x64.dmg`, plus two `.app.tar.gz` bundles |
+   | macOS | `_aarch64.dmg` plus an `.app.tar.gz` bundle (Apple Silicon only) |
 
    (Exact names may differ slightly — correct this table after the first real run.)
 
@@ -74,6 +74,16 @@ producing a mislabeled release.
   `tauri.conf.json`). llama.cpp uses `std::filesystem`, which Apple's SDK
   rejects below a 10.15 deployment target; Tauri's default of 10.13 breaks the
   llama-cpp-sys-2 compile.
+- **macOS builds are Apple Silicon only.** ort provides no prebuilt ONNX
+  Runtime for `x86_64-apple-darwin` (as of 2.0.0-rc.12), so Intel builds fail
+  in ort-sys. Revisit if ort restores Intel binaries, or ship Microsoft's
+  onnxruntime dylib via ort's `load-dynamic` feature if Intel demand appears.
+- **Changing build-environment settings can be defeated by stale caches.** The
+  llama.cpp CMake tree in the Rust cache keeps its original configure settings
+  (e.g. deployment target) — the cmake crate skips reconfiguration ("CMake
+  project was already configured"). After changing such settings, delete the
+  affected caches (repo Settings → Actions → Caches, or the API) before
+  re-running.
 - **llama-cpp-2** is otherwise the most likely build failure. If the Linux job
   fails with "unable to find libclang", add `llvm-dev libclang-dev clang` to
   the apt step — do not drop the `local-llm` feature for one platform.

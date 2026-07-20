@@ -18,12 +18,11 @@ jobs:
       fail-fast: false # one platform failing must not cancel the others
       matrix:
         include:
+          # Apple Silicon only: ort ships no prebuilt ONNX Runtime for
+          # x86_64-apple-darwin (as of 2.0.0-rc.12), so Intel builds cannot link.
           - platform: 'macos-latest' # arm64 runner, native build
             args: '--target aarch64-apple-darwin'
             rust-targets: 'aarch64-apple-darwin'
-          - platform: 'macos-latest' # cross-compile to Intel
-            args: '--target x86_64-apple-darwin'
-            rust-targets: 'x86_64-apple-darwin'
           - platform: 'ubuntu-24.04' # ort's prebuilt ONNX Runtime needs glibc >= 2.38
             args: ''
             rust-targets: ''
@@ -83,7 +82,7 @@ jobs:
             Downloads are attached below.
 
             - **Windows**: `.msi` or `-setup.exe` (NSIS). SmartScreen will warn on first run (unsigned build): "More info" -> "Run anyway".
-            - **macOS**: `.dmg` (`aarch64` = Apple Silicon, `x64` = Intel). Not notarized: approve under System Settings -> Privacy & Security -> "Open Anyway", or run `xattr -cr /Applications/resume-builder.app`.
+            - **macOS**: `.dmg` (Apple Silicon / M1 or later; Intel Macs are not supported). Not notarized: approve under System Settings -> Privacy & Security -> "Open Anyway", or run `xattr -cr /Applications/resume-builder.app`.
             - **Linux**: `.AppImage` (portable), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE). Requires glibc 2.38+ (Ubuntu 24.04+, Debian 13+, Fedora 39+).
           releaseDraft: true
           prerelease: false
