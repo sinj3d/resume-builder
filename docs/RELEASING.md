@@ -62,9 +62,9 @@ producing a mislabeled release.
 
 - **Builds are unsigned** — Windows SmartScreen warns on first run; macOS
   requires "Open Anyway" in System Settings → Privacy & Security (or
-  `xattr -cr`). Future work: a code-signing certificate, Apple notarization, and
-  `tauri-plugin-updater` for in-app updates (tauri-action supports updater
-  artifacts via `TAURI_SIGNING_PRIVATE_KEY`).
+  `xattr -cr`). Future work: a code-signing certificate and Apple notarization.
+  This is orthogonal to the updater's minisign signature, which is already
+  wired up — see [Auto-updates](#auto-updates) below.
 - **Linux builds require glibc ≥ 2.38** (Ubuntu 24.04+, Debian 13+,
   Fedora 39+). The `ort` crate's prebuilt ONNX Runtime static libs reference
   `__isoc23_*` symbols that only exist in glibc 2.38+, which is also why the
@@ -94,3 +94,46 @@ producing a mislabeled release.
   per-repo cache cap and evict each other. If release builds stop hitting cache,
   remove `swatinem/rust-cache` from `release.yml` only — releases are rare; keep
   CI warm.
+
+## Auto-updates
+
+The app checks `https://github.com/sinj3d/resume-builder/releases/latest/download/latest.json`
+on launch (opt-out in Settings) and via Settings → "Check now". Updates are
+signed with a minisign keypair; `tauri-action` generates `latest.json` plus a
+`.sig` per artifact and uploads them to the draft release whenever the signing
+env vars below are present.
+
+### One-time setup (manual — not scriptable)
+
+1. Generate a keypair:
+   ```bash
+   npm run tauri signer generate -- -w $HOME/.tauri/resume-builder.key
+   ```
+   Pick a password. **Back up the private key file** — losing it permanently
+   breaks auto-update for every installed user; there is no recovery.
+2. Paste the printed public key into `src-tauri/tauri.conf.json` →
+   `plugins.updater.pubkey` (currently a placeholder —
+   `REPLACE_WITH_PUBKEY_FROM_TAURI_SIGNER_GENERATE`).
+3. In the GitHub repo, Settings → Secrets and variables → Actions, add:
+   - `TAURI_SIGNING_PRIVATE_KEY` — the private key file's contents
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — its password
+
+### Every release
+
+**You must publish the draft release**, not just create it — `latest.json`
+only exists once a release is published, so clients see "no update available"
+against an unpublished draft. This is the same Publish step as any other
+release (step 7 above); no separate action is needed once the pubkey and
+secrets are configured.
+
+### Caveats
+
+- **v0.1.0 installs never auto-update** (no updater plugin inside them). The
+  first updater-enabled release (v0.2.0+) is a one-time manual download for
+  those users; auto-update works from then on.
+- **Linux: only the AppImage self-updates.** `.deb`/`.rpm` users update
+  manually (reinstall the new package).
+- **Pre-release behavior is silent by design.** Before the pubkey/secrets are
+  configured, or before the first updater-enabled release is published, the
+  update check 404s or fails to verify — the app and Settings page treat this
+  as "no update available," not an error.

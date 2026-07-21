@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getLlmSettings, updateLlmSettings, LLMSettings } from '../lib/tauri';
-import { Settings as SettingsIcon, Cpu, Cloud, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { autoCheckEnabled, setAutoCheck, checkAndPromptForUpdate } from '../lib/updater';
+import { Settings as SettingsIcon, Cpu, Cloud, ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Download } from 'lucide-react';
 
 export default function SettingsPage() {
     const [settings, setSettings] = useState<LLMSettings>({ mode: 'local', gguf_path: '', cloud_model: 'gemini-2.5-flash' });
@@ -10,6 +11,33 @@ export default function SettingsPage() {
     const [hasSavedKey, setHasSavedKey] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const [autoCheck, setAutoCheckState] = useState(autoCheckEnabled());
+    const [checkingUpdate, setCheckingUpdate] = useState(false);
+    const [updateResult, setUpdateResult] = useState<string | null>(null);
+
+    const handleAutoCheckToggle = (enabled: boolean) => {
+        setAutoCheckState(enabled);
+        setAutoCheck(enabled);
+    };
+
+    const handleCheckNow = async () => {
+        setCheckingUpdate(true);
+        setUpdateResult(null);
+        try {
+            const outcome = await checkAndPromptForUpdate();
+            setUpdateResult(
+                outcome === 'none' ? "You're up to date." :
+                outcome === 'declined' ? 'Update available — install skipped.' :
+                'Updated — relaunching...'
+            );
+        } catch (err) {
+            // No updater-enabled release yet, or offline — not a real error to surface.
+            setUpdateResult("Couldn't check for updates (offline, or no release available yet).");
+        } finally {
+            setCheckingUpdate(false);
+        }
+    };
 
     useEffect(() => {
         getLlmSettings()
@@ -148,6 +176,44 @@ export default function SettingsPage() {
                     )}
                 </div>
             </form>
+
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                    <RefreshCw size={18} className="text-blue-500" />
+                    <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">Updates</h2>
+                </div>
+
+                <label className="flex items-center justify-between gap-3 cursor-pointer">
+                    <div>
+                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Check for updates on launch</p>
+                        <p className="text-xs text-slate-400">Prompts before downloading — nothing installs without your say-so.</p>
+                    </div>
+                    <input
+                        type="checkbox"
+                        checked={autoCheck}
+                        onChange={e => handleAutoCheckToggle(e.target.checked)}
+                        className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 bg-slate-100 border-slate-300 shrink-0"
+                    />
+                </label>
+
+                <div className="flex items-center gap-3 pt-2 border-t border-slate-100 dark:border-slate-700">
+                    <button
+                        type="button"
+                        onClick={handleCheckNow}
+                        disabled={checkingUpdate}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${
+                            checkingUpdate
+                            ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                            : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300'
+                        }`}
+                    >
+                        <Download size={15} /> {checkingUpdate ? 'Checking...' : 'Check now'}
+                    </button>
+                    {updateResult && (
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{updateResult}</span>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

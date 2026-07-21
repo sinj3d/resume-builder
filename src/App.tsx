@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import ExperiencesPage from './pages/ExperiencesPage';
@@ -9,9 +10,18 @@ import SettingsPage from './pages/SettingsPage';
 import OnboardingPage from './pages/OnboardingPage';
 import BioPage from './pages/BioPage';
 import ApplicationsPage from './pages/ApplicationsPage';
+import { autoCheckEnabled, checkAndPromptForUpdate } from './lib/updater';
 import './App.css';
 
 function App() {
+  useEffect(() => {
+    // Swallow errors: offline, or no updater-enabled release exists yet
+    // (pre-v0.2.0 installs), and neither should ever surface to the user.
+    if (autoCheckEnabled()) {
+      checkAndPromptForUpdate().catch(() => {});
+    }
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>
