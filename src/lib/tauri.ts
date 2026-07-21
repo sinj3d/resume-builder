@@ -295,3 +295,49 @@ export const upsertEducationDetails = (input: EducationDetails) =>
 export const deleteEducationDetails = (experience_id: number) =>
   invoke<void>('delete_education_details', { experienceId: experience_id });
 
+// Application tracker
+export const APPLICATION_STATUSES = ['wishlist', 'applied', 'interviewing', 'offer', 'rejected'] as const;
+export type ApplicationStatus = typeof APPLICATION_STATUSES[number];
+
+export interface Application {
+  id: number;
+  company: string;
+  role_title: string;
+  url: string | null;
+  status: ApplicationStatus;
+  applied_at: string | null;
+  notes: string | null;
+  cover_letter_id: number | null;
+  archetype_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateApplicationInput {
+  company: string;
+  role_title: string;
+  url?: string | null;
+  status?: ApplicationStatus;
+  applied_at?: string | null;
+  notes?: string | null;
+  cover_letter_id?: number | null;
+  archetype_id?: number | null;
+}
+
+export interface UpdateApplicationInput {
+  id: number;
+  company?: string;
+  role_title?: string;
+  url?: string | null;
+  status?: ApplicationStatus;
+  applied_at?: string | null;
+  notes?: string | null;
+}
+
+export const createApplication = (input: CreateApplicationInput) =>
+  invoke<Application>('create_application', { input });
+export const listApplications = () => invoke<Application[]>('list_applications');
+export const updateApplication = (input: UpdateApplicationInput) =>
+  invoke<Application>('update_application', { input });
+export const deleteApplication = (id: number) => invoke<void>('delete_application', { id });
+

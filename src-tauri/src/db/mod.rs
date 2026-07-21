@@ -157,6 +157,18 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         CREATE TRIGGER IF NOT EXISTS bullet_emb_au AFTER UPDATE OF content ON bullet_points BEGIN
             DELETE FROM bullet_embeddings WHERE bullet_id = old.id;
         END;
+
+        -- Job application tracker. Status values are validated in Rust
+        -- (db::models::APPLICATION_STATUSES), not with a CHECK — this schema
+        -- already needed a table swap once to remove a CHECK constraint.
+        CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company TEXT NOT NULL, role_title TEXT NOT NULL, url TEXT,
+            status TEXT NOT NULL DEFAULT 'applied', applied_at TEXT, notes TEXT,
+            cover_letter_id INTEGER REFERENCES cover_letters(id) ON DELETE SET NULL,
+            archetype_id INTEGER REFERENCES archetypes(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')));
         "
     )?;
 
@@ -676,5 +688,93 @@ mod tests {
         assert_eq!(results.len(), 3, "Should return all 3 results");
         assert_eq!(results[0].0, 1, "Nearest should be bullet_id=1 (itself)");
         assert!(results[0].1 < results[1].1, "Results should be ordered by distance");
+    }
+
+    // ─── Application Tracker ───
+
+    #[test]
+    fn test_applications_crud_and_set_null() {
+        let conn = test_conn();
+        run_migrations(&conn).unwrap();
+
+        conn.execute("INSERT INTO archetypes (name) VALUES ('SWE')", []).unwrap();
+        let arch_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO cover_letters (archetype_id, job_description, content) VALUES (?1, 'JD text', 'Letter body')",
+            [arch_id],
+        )
+        .unwrap();
+        let letter_id = conn.last_insert_rowid();
+
+        // CREATE
+        conn.execute(
+            "INSERT INTO applications (company, role_title, url, status, cover_letter_id, archetype_id)
+             VALUES ('Acme', 'SWE II', 'https://acme.example/job', 'applied', ?1, ?2)",
+            rusqlite::params![letter_id, arch_id],
+        )
+        .unwrap();
+        let app_id = conn.last_insert_rowid();
+
+        // READ
+        let (company, status, cl, arch): (String, String, Option<i64>, Option<i64>) = conn
+            .query_row(
+                "SELECT company, status, cover_letter_id, archetype_id FROM applications WHERE id = ?1",
+                [app_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(company, "Acme");
+        assert_eq!(status, "applied");
+        assert_eq!(cl, Some(letter_id));
+        assert_eq!(arch, Some(arch_id));
+
+        // UPDATE
+        conn.execute(
+            "UPDATE applications SET status = 'interviewing', updated_at = datetime('now') WHERE id = ?1",
+            [app_id],
+        )
+        .unwrap();
+        let new_status: String = conn
+            .query_row("SELECT status FROM applications WHERE id = ?1", [app_id], |row| row.get(0))
+            .unwrap();
+        assert_eq!(new_status, "interviewing");
+
+        // Deleting the cover letter must SET NULL, not cascade-delete the application.
+        conn.execute("DELETE FROM cover_letters WHERE id = ?1", [letter_id]).unwrap();
+        let (still_exists, cl_after): (i64, Option<i64>) = conn
+            .query_row(
+                "SELECT COUNT(*), (SELECT cover_letter_id FROM applications WHERE id = ?1) FROM applications WHERE id = ?1",
+                [app_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(still_exists, 1, "application row must survive letter deletion");
+        assert_eq!(cl_after, None, "cover_letter_id must be SET NULL");
+
+        // Deleting the archetype must also SET NULL, not cascade-delete.
+        conn.execute("DELETE FROM archetypes WHERE id = ?1", [arch_id]).unwrap();
+        let (still_exists, arch_after): (i64, Option<i64>) = conn
+            .query_row(
+                "SELECT COUNT(*), (SELECT archetype_id FROM applications WHERE id = ?1) FROM applications WHERE id = ?1",
+                [app_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(still_exists, 1, "application row must survive archetype deletion");
+        assert_eq!(arch_after, None, "archetype_id must be SET NULL");
+
+        // DELETE
+        let affected = conn.execute("DELETE FROM applications WHERE id = ?1", [app_id]).unwrap();
+        assert_eq!(affected, 1);
+    }
+
+    #[test]
+    fn test_application_status_validation() {
+        for status in models::APPLICATION_STATUSES {
+            assert!(models::validate_status(status).is_ok(), "'{}' should be valid", status);
+        }
+        for bad in ["Applied", "pending", "", "withdrawn"] {
+            assert!(models::validate_status(bad).is_err(), "'{}' should be invalid", bad);
+        }
     }
 }

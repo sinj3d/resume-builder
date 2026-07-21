@@ -93,6 +93,11 @@ pub fn run() {
             db::commands::create_cover_letter_template,
             db::commands::update_cover_letter_template,
             db::commands::delete_cover_letter_template,
+            // Application tracker
+            db::commands::create_application,
+            db::commands::list_applications,
+            db::commands::update_application,
+            db::commands::delete_application,
             // RAG / Embeddings
             rag::commands::embed_bullet,
             rag::commands::embed_all_bullets,

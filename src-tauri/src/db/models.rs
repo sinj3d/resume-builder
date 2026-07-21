@@ -108,6 +108,67 @@ pub struct CoverLetterTemplate {
     pub created_at: String,
 }
 
+/// Valid application statuses, validated in Rust rather than a SQL CHECK
+/// (removing a CHECK later requires a full table swap in SQLite).
+pub const APPLICATION_STATUSES: [&str; 5] =
+    ["wishlist", "applied", "interviewing", "offer", "rejected"];
+
+/// Validate an application status against `APPLICATION_STATUSES`.
+pub fn validate_status(status: &str) -> Result<(), String> {
+    if APPLICATION_STATUSES.contains(&status) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Invalid application status '{}'. Valid statuses: {}",
+            status,
+            APPLICATION_STATUSES.join(", ")
+        ))
+    }
+}
+
+/// A tracked job application, optionally linked to the cover letter it was
+/// sent with and the archetype it targeted (both survive deletion via
+/// ON DELETE SET NULL).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Application {
+    pub id: i64,
+    pub company: String,
+    pub role_title: String,
+    pub url: Option<String>,
+    pub status: String,
+    pub applied_at: Option<String>,
+    pub notes: Option<String>,
+    pub cover_letter_id: Option<i64>,
+    pub archetype_id: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Input payload for creating an application.
+#[derive(Debug, Deserialize)]
+pub struct CreateApplicationInput {
+    pub company: String,
+    pub role_title: String,
+    pub url: Option<String>,
+    pub status: Option<String>,
+    pub applied_at: Option<String>,
+    pub notes: Option<String>,
+    pub cover_letter_id: Option<i64>,
+    pub archetype_id: Option<i64>,
+}
+
+/// Input payload for updating an application. Only non-None fields change.
+#[derive(Debug, Deserialize)]
+pub struct UpdateApplicationInput {
+    pub id: i64,
+    pub company: Option<String>,
+    pub role_title: Option<String>,
+    pub url: Option<String>,
+    pub status: Option<String>,
+    pub applied_at: Option<String>,
+    pub notes: Option<String>,
+}
+
 /// Biographical information for the resume header.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bio {

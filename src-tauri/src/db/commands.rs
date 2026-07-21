@@ -890,3 +890,169 @@ pub fn save_resume_config(
 
     Ok(())
 }
+
+// ──────────────────────────────────────────────
+// Application Tracker
+// ──────────────────────────────────────────────
+
+fn select_application_row(conn: &rusqlite::Connection, id: i64) -> Result<Application, String> {
+    conn.query_row(
+        "SELECT id, company, role_title, url, status, applied_at, notes,
+                cover_letter_id, archetype_id, created_at, updated_at
+         FROM applications WHERE id = ?1",
+        [id],
+        |row| {
+            Ok(Application {
+                id: row.get(0)?,
+                company: row.get(1)?,
+                role_title: row.get(2)?,
+                url: row.get(3)?,
+                status: row.get(4)?,
+                applied_at: row.get(5)?,
+                notes: row.get(6)?,
+                cover_letter_id: row.get(7)?,
+                archetype_id: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        },
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Create a new tracked application. Status defaults to "applied" if omitted.
+#[tauri::command]
+pub fn create_application(
+    state: State<'_, DbState>,
+    input: CreateApplicationInput,
+) -> Result<Application, String> {
+    let status = input.status.unwrap_or_else(|| "applied".to_string());
+    validate_status(&status)?;
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO applications
+            (company, role_title, url, status, applied_at, notes, cover_letter_id, archetype_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            input.company,
+            input.role_title,
+            input.url,
+            status,
+            input.applied_at,
+            input.notes,
+            input.cover_letter_id,
+            input.archetype_id,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    select_application_row(&conn, conn.last_insert_rowid())
+}
+
+/// List all tracked applications, most recently created first.
+#[tauri::command]
+pub fn list_applications(state: State<'_, DbState>) -> Result<Vec<Application>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, company, role_title, url, status, applied_at, notes,
+                    cover_letter_id, archetype_id, created_at, updated_at
+             FROM applications ORDER BY created_at DESC, id DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(Application {
+                id: row.get(0)?,
+                company: row.get(1)?,
+                role_title: row.get(2)?,
+                url: row.get(3)?,
+                status: row.get(4)?,
+                applied_at: row.get(5)?,
+                notes: row.get(6)?,
+                cover_letter_id: row.get(7)?,
+                archetype_id: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Update an existing application. Only non-None fields are updated.
+#[tauri::command]
+pub fn update_application(
+    state: State<'_, DbState>,
+    input: UpdateApplicationInput,
+) -> Result<Application, String> {
+    if let Some(ref status) = input.status {
+        validate_status(status)?;
+    }
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    let mut sets: Vec<String> = Vec::new();
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(ref company) = input.company {
+        sets.push("company = ?".to_string());
+        params.push(Box::new(company.clone()));
+    }
+    if let Some(ref role_title) = input.role_title {
+        sets.push("role_title = ?".to_string());
+        params.push(Box::new(role_title.clone()));
+    }
+    if let Some(ref url) = input.url {
+        sets.push("url = ?".to_string());
+        params.push(Box::new(url.clone()));
+    }
+    if let Some(ref status) = input.status {
+        sets.push("status = ?".to_string());
+        params.push(Box::new(status.clone()));
+    }
+    if let Some(ref applied_at) = input.applied_at {
+        sets.push("applied_at = ?".to_string());
+        params.push(Box::new(applied_at.clone()));
+    }
+    if let Some(ref notes) = input.notes {
+        sets.push("notes = ?".to_string());
+        params.push(Box::new(notes.clone()));
+    }
+
+    if sets.is_empty() {
+        return Err("No fields to update".to_string());
+    }
+
+    sets.push("updated_at = datetime('now')".to_string());
+    params.push(Box::new(input.id));
+
+    let sql = format!("UPDATE applications SET {} WHERE id = ?", sets.join(", "));
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let affected = conn
+        .execute(&sql, param_refs.as_slice())
+        .map_err(|e| e.to_string())?;
+
+    if affected == 0 {
+        return Err(format!("Application with id {} not found", input.id));
+    }
+
+    select_application_row(&conn, input.id)
+}
+
+/// Delete a tracked application by ID.
+#[tauri::command]
+pub fn delete_application(state: State<'_, DbState>, id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let affected = conn
+        .execute("DELETE FROM applications WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+
+    if affected == 0 {
+        return Err(format!("Application with id {} not found", id));
+    }
+    Ok(())
+}

@@ -3,8 +3,26 @@ import {
     generateCoverLetter, listArchetypes, Archetype, GenerationResult,
     listCoverLetters, deleteCoverLetter, CoverLetter,
     listCoverLetterTemplates, CoverLetterTemplate,
+    createApplication, ApplicationStatus, APPLICATION_STATUSES,
 } from '../lib/tauri';
-import { FileText, Send, Sparkles, AlertCircle, History, Trash2, AlertTriangle, X, Copy, Check } from 'lucide-react';
+import { FileText, Send, Sparkles, AlertCircle, History, Trash2, AlertTriangle, X, Copy, Check, ClipboardCheck, ClipboardPlus } from 'lucide-react';
+
+const STATUS_LABELS: Record<ApplicationStatus, string> = {
+    wishlist: 'Wishlist',
+    applied: 'Applied',
+    interviewing: 'Interviewing',
+    offer: 'Offer',
+    rejected: 'Rejected',
+};
+
+const EMPTY_TRACK_FORM = {
+    company: '',
+    role_title: '',
+    url: '',
+    status: 'applied' as ApplicationStatus,
+    applied_at: new Date().toISOString().slice(0, 10),
+    notes: '',
+};
 
 const NO_MATCHES_PREFIX = 'NO_MATCHES::';
 
@@ -25,6 +43,12 @@ export default function GeneratePage() {
     const [history, setHistory] = useState<CoverLetter[]>([]);
     const [viewingHistoryId, setViewingHistoryId] = useState<number | null>(null);
     const [copied, setCopied] = useState(false);
+
+    // Track application
+    const [trackModalOpen, setTrackModalOpen] = useState(false);
+    const [trackForm, setTrackForm] = useState(EMPTY_TRACK_FORM);
+    const [tracked, setTracked] = useState(false);
+    const [trackError, setTrackError] = useState<string | null>(null);
 
     useEffect(() => {
         listArchetypes().then(data => {
@@ -49,6 +73,8 @@ export default function GeneratePage() {
         setStreamText('');
         setStreamBullets([]);
         setViewingHistoryId(null);
+        setTracked(false);
+        setTrackForm(EMPTY_TRACK_FORM);
 
         try {
             const res = await generateCoverLetter(jd, selectedArchetype || null, 8, selectedTemplate || null, e => {
@@ -78,6 +104,8 @@ export default function GeneratePage() {
         setStreamText('');
         setStreamBullets([]);
         setViewingHistoryId(entry.id);
+        setTracked(false);
+        setTrackModalOpen(false);
         setError(null);
     };
 
@@ -99,6 +127,28 @@ export default function GeneratePage() {
         await navigator.clipboard.writeText(result.cover_letter);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleTrackSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!result) return;
+        try {
+            await createApplication({
+                company: trackForm.company,
+                role_title: trackForm.role_title,
+                url: trackForm.url || null,
+                status: trackForm.status,
+                applied_at: trackForm.applied_at || null,
+                notes: trackForm.notes || null,
+                cover_letter_id: result.cover_letter_id,
+                archetype_id: selectedArchetype || null,
+            });
+            setTracked(true);
+            setTrackModalOpen(false);
+            setTrackError(null);
+        } catch (err) {
+            setTrackError(String(err));
+        }
     };
 
     const formatDate = (iso: string) => {
@@ -261,10 +311,24 @@ export default function GeneratePage() {
                             <h2 className="font-semibold text-slate-800 dark:text-slate-200">
                                 {viewingHistoryId !== null ? 'From History' : 'Generated Output'}
                             </h2>
+                            {result && viewingHistoryId === null && (
+                                tracked ? (
+                                    <span className="ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                        <ClipboardCheck size={13} /> Tracked
+                                    </span>
+                                ) : (
+                                    <button
+                                        onClick={() => setTrackModalOpen(true)}
+                                        className="ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                                    >
+                                        <ClipboardPlus size={13} /> Track application
+                                    </button>
+                                )
+                            )}
                             {result && (
                                 <button
                                     onClick={handleCopy}
-                                    className="ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                                    className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors ${viewingHistoryId === null ? '' : 'ml-auto'}`}
                                 >
                                     {copied ? <><Check size={13} className="text-emerald-500" /> Copied</> : <><Copy size={13} /> Copy</>}
                                 </button>
@@ -304,6 +368,93 @@ export default function GeneratePage() {
                 </div>
 
             </div>
+
+            {/* Track application modal */}
+            {trackModalOpen && result && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setTrackModalOpen(false)}>
+                    <div
+                        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 max-w-lg w-full mx-4 max-h-[85vh] flex flex-col animate-in zoom-in-95 fade-in duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                <ClipboardPlus size={18} className="text-blue-500" /> Track This Application
+                            </h3>
+                            <button onClick={() => setTrackModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleTrackSubmit} className="p-6 overflow-y-auto flex flex-col gap-4">
+                            {trackError && (
+                                <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm">
+                                    {trackError}
+                                </div>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Company</label>
+                                    <input
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        value={trackForm.company}
+                                        onChange={e => setTrackForm({ ...trackForm, company: e.target.value })}
+                                        required
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Role Title</label>
+                                    <input
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        value={trackForm.role_title}
+                                        onChange={e => setTrackForm({ ...trackForm, role_title: e.target.value })}
+                                        required
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5 md:col-span-2">
+                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Job Posting URL</label>
+                                    <input
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        placeholder="https://..."
+                                        value={trackForm.url}
+                                        onChange={e => setTrackForm({ ...trackForm, url: e.target.value })}
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Status</label>
+                                    <select
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        value={trackForm.status}
+                                        onChange={e => setTrackForm({ ...trackForm, status: e.target.value as ApplicationStatus })}
+                                    >
+                                        {APPLICATION_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Date Applied</label>
+                                    <input
+                                        type="date"
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        value={trackForm.applied_at}
+                                        onChange={e => setTrackForm({ ...trackForm, applied_at: e.target.value })}
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5 md:col-span-2">
+                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Notes</label>
+                                    <textarea
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-y min-h-[70px]"
+                                        value={trackForm.notes}
+                                        onChange={e => setTrackForm({ ...trackForm, notes: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end mt-2 pt-4 border-t border-slate-100 dark:border-slate-700">
+                                <button type="submit" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition-colors shadow-md">
+                                    <ClipboardCheck size={18} /> Save
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

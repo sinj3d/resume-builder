@@ -8,6 +8,7 @@ import LatexPage from './pages/LatexPage';
 import SettingsPage from './pages/SettingsPage';
 import OnboardingPage from './pages/OnboardingPage';
 import BioPage from './pages/BioPage';
+import ApplicationsPage from './pages/ApplicationsPage';
 import './App.css';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
           <Route index element={<ExperiencesPage />} />
           <Route path="archetypes" element={<ArchetypesPage />} />
           <Route path="generate" element={<GeneratePage />} />
+          <Route path="applications" element={<ApplicationsPage />} />
           <Route path="templates" element={<TemplatesPage />} />
           <Route path="latex" element={<LatexPage />} />
           <Route path="onboarding" element={<OnboardingPage />} />
