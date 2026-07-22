@@ -21,6 +21,28 @@ const EMPTY_TRACK_FORM = {
 
 const NO_MATCHES_PREFIX = 'NO_MATCHES::';
 
+/** Shown in the letter pane while generation is running but no tokens have
+ *  arrived yet — retrieval first, then the local model loading into memory
+ *  can take a while before the first word appears. */
+function DraftingIndicator({ phase }: { phase: 'reading' | 'drafting' }) {
+    return (
+        <div className="flex flex-col items-center gap-4 rounded border border-paper-inset-border bg-paper-inset py-16 dark:border-charcoal-inset-border dark:bg-charcoal-inset">
+            <div className="flex gap-1.5">
+                {[0, 1, 2].map(i => (
+                    <span
+                        key={i}
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-sienna dark:bg-sienna-dark"
+                        style={{ animationDelay: `${i * 160}ms` }}
+                    />
+                ))}
+            </div>
+            <p className="font-serif text-sm italic text-ink-muted dark:text-cream-muted">
+                {phase === 'reading' ? 'Reading your record…' : 'Drafting your letter…'}
+            </p>
+        </div>
+    );
+}
+
 export default function GeneratePage() {
     const [archetypes, setArchetypes] = useState<Archetype[]>([]);
     const [selectedArchetype, setSelectedArchetype] = useState<number>(0);
@@ -292,11 +314,18 @@ export default function GeneratePage() {
                         </div>
 
                         <div className="relative flex-1 overflow-hidden p-0">
-                            {result || streamText || streamBullets.length > 0 ? (
+                            {loading || result || streamText || streamBullets.length > 0 ? (
                                 <div className="absolute inset-0 flex flex-col gap-6 overflow-y-auto p-8">
-                                    <div className="whitespace-pre-wrap rounded border border-paper-inset-border bg-paper-inset p-9 font-serif text-[14.5px] leading-[1.75] text-[#3a352b] dark:border-charcoal-inset-border dark:bg-charcoal-inset dark:text-cream">
-                                        {result ? result.cover_letter : streamText}
-                                    </div>
+                                    {result || streamText ? (
+                                        <div className="whitespace-pre-wrap rounded border border-paper-inset-border bg-paper-inset p-9 font-serif text-[14.5px] leading-[1.75] text-[#3a352b] dark:border-charcoal-inset-border dark:bg-charcoal-inset dark:text-cream">
+                                            {result ? result.cover_letter : streamText}
+                                            {!result && loading && (
+                                                <span className="ml-0.5 inline-block animate-pulse text-sienna dark:text-sienna-dark">▍</span>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <DraftingIndicator phase={streamBullets.length > 0 ? 'drafting' : 'reading'} />
+                                    )}
 
                                     {(result ? result.bullets_used : streamBullets).length > 0 && (
                                         <div>

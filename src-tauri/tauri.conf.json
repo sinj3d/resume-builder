@@ -41,7 +41,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_PUBKEY_FROM_TAURI_SIGNER_GENERATE",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNBNkZBQkVERUY5OUNGNzIKUldSeXo1bnY3YXR2T3FJNWlFTS9BakRRZHlzYnlTZUU0NWJMSGFVcDdsaytrNHF4ckt3dnpyMWIK",
       "endpoints": [
         "https://github.com/sinj3d/resume-builder/releases/latest/download/latest.json"
       ]
