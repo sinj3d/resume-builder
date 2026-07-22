@@ -47,7 +47,7 @@ jobs:
         run: mkdir -p dist
       - name: cargo test (LaTeX tests are Windows-only + network-bound; run locally)
         working-directory: src-tauri
-        run: cargo test --locked -- --skip latex::
+        run: 'cargo test --locked -- --skip latex::'
 
   prompt-parity:
     name: Prompt parity (python selftest)
