@@ -1,3 +1,4 @@
+use rusqlite::OptionalExtension;
 use tauri::State;
 use crate::db::DbState;
 use crate::db::models::*;
@@ -1054,5 +1055,31 @@ pub fn delete_application(state: State<'_, DbState>, id: i64) -> Result<(), Stri
     if affected == 0 {
         return Err(format!("Application with id {} not found", id));
     }
+    Ok(())
+}
+
+// ──────────────────────────────────────────────
+// App settings (generic key/value)
+// ──────────────────────────────────────────────
+
+/// Read a value from the generic `app_settings` table, e.g. the
+/// `onboarding_complete` first-run flag. `None` if the key is unset.
+#[tauri::command]
+pub fn get_app_setting(state: State<'_, DbState>, key: String) -> Result<Option<String>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.query_row("SELECT value FROM app_settings WHERE key = ?1", [key], |row| row.get(0))
+        .optional()
+        .map_err(|e| e.to_string())
+}
+
+/// Write a value into the generic `app_settings` table.
+#[tauri::command]
+pub fn set_app_setting(state: State<'_, DbState>, key: String, value: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?1, ?2)",
+        rusqlite::params![key, value],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }

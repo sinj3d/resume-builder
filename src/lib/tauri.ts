@@ -341,3 +341,8 @@ export const updateApplication = (input: UpdateApplicationInput) =>
   invoke<Application>('update_application', { input });
 export const deleteApplication = (id: number) => invoke<void>('delete_application', { id });
 
+// App settings (generic key/value) — used to persist e.g. the first-run
+// onboarding-complete flag.
+export const getAppSetting = (key: string) => invoke<string | null>('get_app_setting', { key });
+export const setAppSetting = (key: string, value: string) => invoke<void>('set_app_setting', { key, value });
+

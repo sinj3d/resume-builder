@@ -5,15 +5,10 @@ import {
     listCoverLetterTemplates, CoverLetterTemplate,
     createApplication, ApplicationStatus, APPLICATION_STATUSES,
 } from '../lib/tauri';
-import { FileText, Send, Sparkles, AlertCircle, History, Trash2, AlertTriangle, X, Copy, Check, ClipboardCheck, ClipboardPlus } from 'lucide-react';
+import { PageHeader, Button, Card, Modal, STATUS_TOKENS } from '../components/ui';
 
-const STATUS_LABELS: Record<ApplicationStatus, string> = {
-    wishlist: 'Wishlist',
-    applied: 'Applied',
-    interviewing: 'Interviewing',
-    offer: 'Offer',
-    rejected: 'Rejected',
-};
+const inputCls = "w-full px-3 py-2 bg-paper dark:bg-charcoal-inset border border-paper-border dark:border-charcoal-border rounded text-sm text-ink dark:text-cream placeholder:text-ink-faint dark:placeholder:text-cream-faint focus:outline-none focus:ring-2 focus:ring-sienna/30 focus:border-sienna transition-all";
+const labelCls = "text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink-muted dark:text-cream-muted";
 
 const EMPTY_TRACK_FORM = {
     company: '',
@@ -157,54 +152,36 @@ export default function GeneratePage() {
     };
 
     return (
-        <div className="flex flex-col h-full gap-6">
-            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 flex items-center gap-3">
-                <Sparkles className="text-blue-500" /> Cover Letter Generator
-            </h1>
+        <div className="flex h-full flex-col gap-6">
+            <PageHeader title="Cover Letters" subtitle="Grounded in your own record — nothing invented." />
 
             {/* No-matches popup */}
-            {noMatchMessage && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setNoMatchMessage(null)}>
-                    <div
-                        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-amber-200 dark:border-amber-800 max-w-md w-full mx-4 p-6 animate-in zoom-in-95 fade-in duration-200"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
-                                <AlertTriangle className="text-amber-600 dark:text-amber-400" size={24} />
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">No matching experiences</h3>
-                                <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">{noMatchMessage}</p>
-                                <p className="text-xs text-slate-500 mt-3">
-                                    No letter was generated — a cover letter without concrete experiences wouldn't be worth sending.
-                                </p>
-                            </div>
-                            <button onClick={() => setNoMatchMessage(null)} className="text-slate-400 hover:text-slate-600">
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <div className="flex justify-end mt-5">
-                            <button
-                                onClick={() => setNoMatchMessage(null)}
-                                className="px-5 py-2 rounded-lg font-semibold text-white bg-amber-600 hover:bg-amber-700 transition-colors"
-                            >
-                                Got it
-                            </button>
-                        </div>
+            <Modal
+                open={!!noMatchMessage}
+                onClose={() => setNoMatchMessage(null)}
+                title="No matching experiences"
+                maxWidth="max-w-md"
+                footer={
+                    <div className="flex justify-end">
+                        <Button variant="accent" onClick={() => setNoMatchMessage(null)}>Got it</Button>
                     </div>
-                </div>
-            )}
+                }
+            >
+                <p className="text-sm text-ink-muted dark:text-cream-muted">{noMatchMessage}</p>
+                <p className="mt-3 text-xs italic text-ink-faint dark:text-cream-faint">
+                    No letter was generated — a cover letter without concrete experiences wouldn't be worth sending.
+                </p>
+            </Modal>
 
-            <div className="flex flex-col lg:flex-row gap-6 h-full min-h-0">
+            <div className="flex h-full min-h-0 flex-col gap-6 lg:flex-row">
 
                 {/* Input Panel + History */}
-                <div className="flex flex-col gap-4 w-full lg:w-1/3 min-w-[300px] min-h-0">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col gap-4">
+                <div className="flex w-full min-h-0 flex-col gap-3.5 lg:w-[340px] lg:shrink-0">
+                    <Card className="flex flex-col gap-3.5 p-5">
                         <div>
-                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Target Archetype</label>
+                            <label className={labelCls}>Archetype</label>
                             <select
-                                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                className={`mt-1.5 ${inputCls}`}
                                 value={selectedArchetype}
                                 onChange={e => setSelectedArchetype(Number(e.target.value))}
                             >
@@ -214,9 +191,9 @@ export default function GeneratePage() {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Template</label>
+                            <label className={labelCls}>Template</label>
                             <select
-                                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                className={`mt-1.5 ${inputCls}`}
                                 value={selectedTemplate}
                                 onChange={e => setSelectedTemplate(Number(e.target.value))}
                             >
@@ -225,132 +202,109 @@ export default function GeneratePage() {
                             </select>
                         </div>
 
-                        <div className="flex flex-col">
-                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Job Description</label>
+                        <div>
+                            <label className={labelCls}>Job description</label>
                             <textarea
-                                className="w-full p-3 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-y min-h-[160px]"
+                                className={`mt-1.5 ${inputCls} min-h-[130px] resize-y`}
                                 placeholder="Paste the exact job description here..."
                                 value={jd}
                                 onChange={e => setJd(e.target.value)}
                             />
                         </div>
 
-                        <button
-                            onClick={handleGenerate}
-                            disabled={loading}
-                            className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-semibold text-white transition-all shadow-md ${
-                                loading
-                                ? 'bg-slate-400 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-lg'
-                            }`}
-                        >
+                        <Button onClick={handleGenerate} disabled={loading} variant="accent" className="w-full">
                             {loading ? (
-                                <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating...</>
-                            ) : (
-                                <><Send size={18} /> Generate Letter</>
-                            )}
-                        </button>
-                    </div>
+                                <>
+                                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-paper/30 border-t-paper dark:border-charcoal/30 dark:border-t-charcoal" />
+                                    Generating...
+                                </>
+                            ) : 'Draft the letter'}
+                        </Button>
+                    </Card>
 
                     {/* History */}
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
-                        <div className="p-3 px-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20 flex items-center gap-2 shrink-0">
-                            <History size={16} className="text-slate-500" />
-                            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">History</h2>
-                            <span className="text-xs text-slate-400 ml-auto">{history.length} letters</span>
+                    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                        <div className="flex shrink-0 items-center gap-2 border-b border-paper-inset-border bg-paper-inset px-4 py-3 dark:border-charcoal-inset-border dark:bg-charcoal-inset">
+                            <span className={labelCls}>Past letters</span>
+                            <span className="ml-auto text-[12px] text-ink-muted dark:text-cream-muted">{history.length}</span>
                         </div>
-                        <div className="flex-1 overflow-y-auto flex flex-col">
+                        <div className="flex flex-1 flex-col overflow-y-auto">
                             {history.length === 0 ? (
-                                <p className="text-xs text-slate-400 italic p-4 text-center">Generated letters will appear here.</p>
+                                <p className="p-4 text-center text-xs italic text-ink-muted dark:text-cream-muted">Generated letters will appear here.</p>
                             ) : (
-                                history.map(entry => (
+                                history.map((entry, i) => (
                                     <button
                                         key={entry.id}
                                         onClick={() => viewHistoryEntry(entry)}
-                                        className={`shrink-0 text-left px-4 py-3 border-b border-slate-100 dark:border-slate-700/50 group transition-colors ${
-                                            viewingHistoryId === entry.id
-                                            ? 'bg-blue-50 dark:bg-blue-900/20'
-                                            : 'hover:bg-slate-50 dark:hover:bg-slate-700/30'
+                                        className={`group shrink-0 border-b border-paper-inset-border px-4 py-3 text-left transition-colors dark:border-charcoal-inset-border ${
+                                            viewingHistoryId === entry.id || i === 0
+                                                ? 'bg-paper-inset dark:bg-charcoal-inset'
+                                                : 'hover:bg-paper-inset/60 dark:hover:bg-charcoal-inset/60'
                                         }`}
                                     >
                                         <div className="flex items-center justify-between gap-2">
-                                            <span className="text-xs font-semibold text-slate-500">{formatDate(entry.created_at)}</span>
+                                            <span className={`text-[11.5px] font-semibold ${i === 0 ? 'text-sienna dark:text-sienna-dark' : 'text-ink-muted dark:text-cream-muted'}`}>
+                                                {formatDate(entry.created_at)}
+                                            </span>
                                             <span
                                                 role="button"
                                                 onClick={e => { e.stopPropagation(); handleDeleteHistory(entry.id); }}
-                                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
-                                                title="Delete"
+                                                className="text-[11px] text-ink-faint opacity-0 transition-opacity hover:text-sienna group-hover:opacity-100 dark:text-cream-faint dark:hover:text-sienna-dark"
                                             >
-                                                <Trash2 size={13} />
+                                                remove
                                             </span>
                                         </div>
-                                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 line-clamp-2">
+                                        <p className="mt-1 line-clamp-2 text-xs text-ink-muted dark:text-cream-muted">
                                             {entry.job_description}
                                         </p>
                                     </button>
                                 ))
                             )}
                         </div>
-                    </div>
+                    </Card>
                 </div>
 
                 {/* Output Panel */}
-                <div className="flex flex-col gap-4 w-full lg:w-2/3 min-h-0">
-                    {/* Error Banner */}
+                <div className="flex w-full min-h-0 flex-1 flex-col gap-4">
                     {error && (
-                        <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-xl flex gap-3 border border-red-200 dark:border-red-800">
-                            <AlertCircle className="shrink-0" />
+                        <div className="rounded border border-[#a1453a]/30 bg-[#a1453a]/5 p-4 text-[#a1453a] dark:border-[#d97567]/30 dark:bg-[#d97567]/5 dark:text-[#d97567]">
                             <p className="text-sm font-medium">{error}</p>
                         </div>
                     )}
 
-                    {/* Result Container */}
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 overflow-hidden">
-                        <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20 flex items-center gap-2">
-                            <FileText size={18} className="text-slate-500" />
-                            <h2 className="font-semibold text-slate-800 dark:text-slate-200">
-                                {viewingHistoryId !== null ? 'From History' : 'Generated Output'}
-                            </h2>
-                            {result && viewingHistoryId === null && (
-                                tracked ? (
-                                    <span className="ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                                        <ClipboardCheck size={13} /> Tracked
-                                    </span>
-                                ) : (
-                                    <button
-                                        onClick={() => setTrackModalOpen(true)}
-                                        className="ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                                    >
-                                        <ClipboardPlus size={13} /> Track application
-                                    </button>
-                                )
-                            )}
-                            {result && (
-                                <button
-                                    onClick={handleCopy}
-                                    className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors ${viewingHistoryId === null ? '' : 'ml-auto'}`}
-                                >
-                                    {copied ? <><Check size={13} className="text-emerald-500" /> Copied</> : <><Copy size={13} /> Copy</>}
-                                </button>
-                            )}
+                    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                        <div className="flex shrink-0 items-center gap-2 border-b border-paper-inset-border bg-paper-inset px-5 py-3 dark:border-charcoal-inset-border dark:bg-charcoal-inset">
+                            <span className={labelCls}>{viewingHistoryId !== null ? 'From history' : 'Drafted letter'}</span>
+                            <div className="ml-auto flex items-center gap-2">
+                                {result && viewingHistoryId === null && (
+                                    tracked ? (
+                                        <span className="rounded-full bg-[#3d6b35]/10 px-3.5 py-1.5 text-xs font-semibold text-[#3d6b35] dark:bg-[#6fae62]/10 dark:text-[#6fae62]">
+                                            Tracked ✓
+                                        </span>
+                                    ) : (
+                                        <Button variant="outline" pill onClick={() => setTrackModalOpen(true)}>Track application</Button>
+                                    )
+                                )}
+                                {result && (
+                                    <Button variant="outline" pill onClick={handleCopy}>{copied ? 'Copied' : 'Copy'}</Button>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="flex-1 p-0 overflow-hidden relative">
+                        <div className="relative flex-1 overflow-hidden p-0">
                             {result || streamText || streamBullets.length > 0 ? (
-                                <div className="absolute inset-0 overflow-y-auto p-6 flex flex-col gap-6">
-                                    <div className="prose dark:prose-invert max-w-none">
-                                        <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 p-6 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                                            {result ? result.cover_letter : streamText}
-                                        </div>
+                                <div className="absolute inset-0 flex flex-col gap-6 overflow-y-auto p-8">
+                                    <div className="whitespace-pre-wrap rounded border border-paper-inset-border bg-paper-inset p-9 font-serif text-[14.5px] leading-[1.75] text-[#3a352b] dark:border-charcoal-inset-border dark:bg-charcoal-inset dark:text-cream">
+                                        {result ? result.cover_letter : streamText}
                                     </div>
 
                                     {(result ? result.bullets_used : streamBullets).length > 0 && (
                                         <div>
-                                            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">Retrieved Experiences Used</h3>
-                                            <ul className="flex flex-col gap-2">
+                                            <div className={`mb-3 ${labelCls}`}>Drawn from your record</div>
+                                            <ul className="flex flex-col gap-1.5 text-[12px] text-ink-muted dark:text-cream-muted">
                                                 {(result ? result.bullets_used : streamBullets).map((b, i) => (
-                                                    <li key={i} className="text-xs text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700">
-                                                        {b}
+                                                    <li key={i} className="flex gap-2.5">
+                                                        <span className="shrink-0 text-sienna dark:text-sienna-dark">—</span>{b}
                                                     </li>
                                                 ))}
                                             </ul>
@@ -358,103 +312,93 @@ export default function GeneratePage() {
                                     )}
                                 </div>
                             ) : (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-3 p-6 text-center">
-                                    <FileText size={48} className="opacity-20" />
-                                    <p>Select an archetype, paste a job description, and hit generate to craft a tailored cover letter.</p>
+                                <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-ink-muted dark:text-cream-muted">
+                                    <p className="max-w-xs text-sm">
+                                        Select an archetype, paste a job description, and hit "Draft the letter" to craft a tailored cover letter.
+                                    </p>
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </Card>
                 </div>
 
             </div>
 
             {/* Track application modal */}
-            {trackModalOpen && result && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setTrackModalOpen(false)}>
-                    <div
-                        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 max-w-lg w-full mx-4 max-h-[85vh] flex flex-col animate-in zoom-in-95 fade-in duration-200"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
-                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                                <ClipboardPlus size={18} className="text-blue-500" /> Track This Application
-                            </h3>
-                            <button onClick={() => setTrackModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <form onSubmit={handleTrackSubmit} className="p-6 overflow-y-auto flex flex-col gap-4">
-                            {trackError && (
-                                <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm">
-                                    {trackError}
-                                </div>
-                            )}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="flex flex-col gap-1.5">
-                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Company</label>
-                                    <input
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        value={trackForm.company}
-                                        onChange={e => setTrackForm({ ...trackForm, company: e.target.value })}
-                                        required
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Role Title</label>
-                                    <input
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        value={trackForm.role_title}
-                                        onChange={e => setTrackForm({ ...trackForm, role_title: e.target.value })}
-                                        required
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1.5 md:col-span-2">
-                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Job Posting URL</label>
-                                    <input
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        placeholder="https://..."
-                                        value={trackForm.url}
-                                        onChange={e => setTrackForm({ ...trackForm, url: e.target.value })}
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Status</label>
-                                    <select
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        value={trackForm.status}
-                                        onChange={e => setTrackForm({ ...trackForm, status: e.target.value as ApplicationStatus })}
-                                    >
-                                        {APPLICATION_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-                                    </select>
-                                </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Date Applied</label>
-                                    <input
-                                        type="date"
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        value={trackForm.applied_at}
-                                        onChange={e => setTrackForm({ ...trackForm, applied_at: e.target.value })}
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1.5 md:col-span-2">
-                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Notes</label>
-                                    <textarea
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-y min-h-[70px]"
-                                        value={trackForm.notes}
-                                        onChange={e => setTrackForm({ ...trackForm, notes: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex justify-end mt-2 pt-4 border-t border-slate-100 dark:border-slate-700">
-                                <button type="submit" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition-colors shadow-md">
-                                    <ClipboardCheck size={18} /> Save
-                                </button>
-                            </div>
-                        </form>
+            <Modal
+                open={trackModalOpen}
+                onClose={() => setTrackModalOpen(false)}
+                title="Track this application"
+                footer={
+                    <div className="flex justify-end">
+                        <Button type="submit" form="track-application-form" variant="accent">Save</Button>
                     </div>
-                </div>
-            )}
+                }
+            >
+                <form id="track-application-form" onSubmit={handleTrackSubmit} className="flex flex-col gap-4">
+                    {trackError && (
+                        <div className="rounded bg-[#a1453a]/10 p-3 text-sm text-[#a1453a] dark:bg-[#d97567]/10 dark:text-[#d97567]">
+                            {trackError}
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="flex flex-col gap-1.5">
+                            <label className={labelCls}>Company</label>
+                            <input
+                                className={inputCls}
+                                value={trackForm.company}
+                                onChange={e => setTrackForm({ ...trackForm, company: e.target.value })}
+                                required
+                            />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label className={labelCls}>Role title</label>
+                            <input
+                                className={inputCls}
+                                value={trackForm.role_title}
+                                onChange={e => setTrackForm({ ...trackForm, role_title: e.target.value })}
+                                required
+                            />
+                        </div>
+                        <div className="flex flex-col gap-1.5 md:col-span-2">
+                            <label className={labelCls}>Job posting URL</label>
+                            <input
+                                className={inputCls}
+                                placeholder="https://..."
+                                value={trackForm.url}
+                                onChange={e => setTrackForm({ ...trackForm, url: e.target.value })}
+                            />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label className={labelCls}>Status</label>
+                            <select
+                                className={inputCls}
+                                value={trackForm.status}
+                                onChange={e => setTrackForm({ ...trackForm, status: e.target.value as ApplicationStatus })}
+                            >
+                                {APPLICATION_STATUSES.map(s => <option key={s} value={s}>{STATUS_TOKENS[s].label}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label className={labelCls}>Date applied</label>
+                            <input
+                                type="date"
+                                className={inputCls}
+                                value={trackForm.applied_at}
+                                onChange={e => setTrackForm({ ...trackForm, applied_at: e.target.value })}
+                            />
+                        </div>
+                        <div className="flex flex-col gap-1.5 md:col-span-2">
+                            <label className={labelCls}>Notes</label>
+                            <textarea
+                                className={`${inputCls} min-h-[70px] resize-y`}
+                                value={trackForm.notes}
+                                onChange={e => setTrackForm({ ...trackForm, notes: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 }

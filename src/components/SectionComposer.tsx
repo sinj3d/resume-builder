@@ -118,11 +118,11 @@ export default function SectionComposer({ sections, onChange }: Props) {
     };
 
     return (
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4">
+        <div className="bg-paper-card dark:bg-charcoal-card rounded border border-paper-border dark:border-charcoal-border shadow-sm p-4">
             <div className="flex items-center gap-2 mb-3">
-                <Layers size={16} className="text-slate-500" />
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Sections</span>
-                <span className="text-xs text-slate-400 ml-1">
+                <Layers size={16} className="text-ink-muted dark:text-cream-muted" />
+                <span className="text-sm font-semibold text-ink dark:text-cream">Sections</span>
+                <span className="text-xs text-ink-faint dark:text-cream-faint ml-1">
                     — drag cards to reorder · drag a category chip onto another card to merge
                 </span>
             </div>
@@ -141,22 +141,22 @@ export default function SectionComposer({ sections, onChange }: Props) {
                                         <div
                                             ref={provided.innerRef}
                                             {...provided.draggableProps}
-                                            className={`flex flex-col gap-2 p-3 rounded-lg border min-w-[160px] transition-colors ${
+                                            className={`flex flex-col gap-2 p-3 rounded border min-w-[160px] transition-colors ${
                                                 snapshot.isDragging
-                                                    ? 'bg-blue-50 dark:bg-blue-900/40 border-blue-400 shadow-lg'
-                                                    : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700'
+                                                    ? 'bg-[rgba(138,61,34,.06)] dark:bg-[rgba(217,140,95,.10)] border-sienna dark:border-sienna-dark shadow-lg'
+                                                    : 'bg-paper-inset dark:bg-charcoal-inset border-paper-border dark:border-charcoal-border'
                                             }`}
                                         >
                                             <div className="flex items-center gap-1.5">
-                                                <span {...provided.dragHandleProps} className="cursor-grab text-slate-400">
+                                                <span {...provided.dragHandleProps} className="cursor-grab text-ink-faint dark:text-cream-faint">
                                                     <GripVertical size={14} />
                                                 </span>
-                                                <span className="text-xs font-semibold text-slate-400">{index + 1}.</span>
+                                                <span className="text-xs font-semibold text-ink-faint dark:text-cream-faint">{index + 1}.</span>
                                                 {editingId === section.id ? (
                                                     <span className="flex items-center gap-1">
                                                         <input
                                                             autoFocus
-                                                            className="w-32 px-1.5 py-0.5 text-sm bg-white dark:bg-slate-900 border border-blue-400 rounded outline-none"
+                                                            className="w-32 px-1.5 py-0.5 text-sm bg-paper dark:bg-charcoal-inset border border-sienna dark:border-sienna-dark rounded text-ink dark:text-cream outline-none"
                                                             value={editHeading}
                                                             onChange={e => setEditHeading(e.target.value)}
                                                             onKeyDown={e => { if (e.key === 'Enter') commitHeading(section.id); }}
@@ -165,19 +165,19 @@ export default function SectionComposer({ sections, onChange }: Props) {
                                                         <button
                                                             onMouseDown={e => e.preventDefault()}
                                                             onClick={() => commitHeading(section.id)}
-                                                            className="text-emerald-600"
+                                                            className="text-[#3d6b35] dark:text-[#6fae62]"
                                                         >
                                                             <Check size={14} />
                                                         </button>
                                                     </span>
                                                 ) : (
                                                     <span className="flex items-center gap-1.5">
-                                                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                                        <span className="text-sm font-semibold text-ink dark:text-cream">
                                                             {section.heading}
                                                         </span>
                                                         <button
                                                             onClick={() => { setEditingId(section.id); setEditHeading(section.heading); }}
-                                                            className="text-slate-400 hover:text-blue-600"
+                                                            className="text-ink-faint hover:text-sienna dark:text-cream-faint dark:hover:text-sienna-dark"
                                                             title="Rename section"
                                                         >
                                                             <Pencil size={12} />
@@ -185,7 +185,7 @@ export default function SectionComposer({ sections, onChange }: Props) {
                                                         {section.categories.length > 1 && (
                                                             <button
                                                                 onClick={() => splitSection(section.id)}
-                                                                className="text-slate-400 hover:text-amber-600"
+                                                                className="text-ink-faint hover:text-[#b8860b] dark:text-cream-faint dark:hover:text-[#d4a83f]"
                                                                 title="Split into one section per category"
                                                             >
                                                                 <SplitSquareHorizontal size={13} />
@@ -201,7 +201,7 @@ export default function SectionComposer({ sections, onChange }: Props) {
                                                         ref={provided.innerRef}
                                                         {...provided.droppableProps}
                                                         className={`flex flex-wrap gap-1.5 min-h-[28px] p-1 rounded ${
-                                                            snapshot.isDraggingOver ? 'bg-blue-100/60 dark:bg-blue-900/30' : ''
+                                                            snapshot.isDraggingOver ? 'bg-[rgba(138,61,34,.08)] dark:bg-[rgba(217,140,95,.12)]' : ''
                                                         }`}
                                                     >
                                                         {section.categories.map((cat, catIndex) => (
@@ -213,8 +213,8 @@ export default function SectionComposer({ sections, onChange }: Props) {
                                                                         {...provided.dragHandleProps}
                                                                         className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border select-none ${
                                                                             snapshot.isDragging
-                                                                                ? 'bg-blue-200 dark:bg-blue-800 border-blue-400 shadow'
-                                                                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300'
+                                                                                ? 'bg-[rgba(138,61,34,.14)] dark:bg-[rgba(217,140,95,.18)] border-sienna dark:border-sienna-dark shadow'
+                                                                                : 'bg-paper-card dark:bg-charcoal-card border-paper-border dark:border-charcoal-border text-ink-muted-2 dark:text-cream-muted'
                                                                         }`}
                                                                     >
                                                                         <Tag size={10} className="opacity-50" />
@@ -238,10 +238,10 @@ export default function SectionComposer({ sections, onChange }: Props) {
                                     <div
                                         ref={provided.innerRef}
                                         {...provided.droppableProps}
-                                        className={`flex items-center justify-center px-4 rounded-lg border-2 border-dashed text-xs font-medium min-w-[120px] min-h-[64px] ${
+                                        className={`flex items-center justify-center px-4 rounded border-2 border-dashed text-xs font-medium min-w-[120px] min-h-[64px] ${
                                             snapshot.isDraggingOver
-                                                ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600'
-                                                : 'border-slate-300 dark:border-slate-700 text-slate-400'
+                                                ? 'border-[#3d6b35]/50 bg-[#3d6b35]/5 text-[#3d6b35] dark:border-[#6fae62]/50 dark:bg-[#6fae62]/5 dark:text-[#6fae62]'
+                                                : 'border-paper-border dark:border-charcoal-border text-ink-faint dark:text-cream-faint'
                                         }`}
                                     >
                                         <span>Drop a category here to separate it</span>

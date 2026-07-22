@@ -6,26 +6,11 @@ import {
     listCoverLetters, CoverLetter,
     listArchetypes, Archetype,
 } from '../lib/tauri';
-import {
-    ClipboardList, Plus, Trash2, Edit2, ArrowLeft, Check, X, ExternalLink,
-    FileText, Building2, CheckCircle2,
-} from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
+import { PageHeader, Button, Card, FilterPills, StatusBadge, STATUS_TOKENS, EmptyState, Modal, Toast } from '../components/ui';
 
-const STATUS_STYLES: Record<ApplicationStatus, string> = {
-    wishlist: 'bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-300',
-    applied: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200',
-    interviewing: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
-    offer: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200',
-    rejected: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200',
-};
-
-const STATUS_LABELS: Record<ApplicationStatus, string> = {
-    wishlist: 'Wishlist',
-    applied: 'Applied',
-    interviewing: 'Interviewing',
-    offer: 'Offer',
-    rejected: 'Rejected',
-};
+const inputCls = "w-full px-3 py-2 bg-paper dark:bg-charcoal-inset border border-paper-border dark:border-charcoal-border rounded text-sm text-ink dark:text-cream placeholder:text-ink-faint dark:placeholder:text-cream-faint focus:outline-none focus:ring-2 focus:ring-sienna/30 focus:border-sienna transition-all";
+const labelCls = "text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink-muted dark:text-cream-muted";
 
 const EMPTY_FORM = {
     company: '',
@@ -76,6 +61,23 @@ export default function ApplicationsPage() {
         () => statusFilter === 'all' ? applications : applications.filter(a => a.status === statusFilter),
         [applications, statusFilter],
     );
+
+    const filterOptions = useMemo(() => [
+        { key: 'all', label: 'All', count: applications.length },
+        ...APPLICATION_STATUSES.map(s => ({
+            key: s,
+            label: STATUS_TOKENS[s].label,
+            count: applications.filter(a => a.status === s).length,
+        })),
+    ], [applications]);
+
+    const subtitle = useMemo(() => {
+        const total = applications.length;
+        if (total === 0) return 'Nothing tracked yet.';
+        const interviewing = applications.filter(a => a.status === 'interviewing').length;
+        if (interviewing === 0) return `${total} in motion`;
+        return `${total} in motion — ${interviewing} conversation${interviewing === 1 ? '' : 's'} underway`;
+    }, [applications]);
 
     const resetForm = () => {
         setForm(EMPTY_FORM);
@@ -171,51 +173,32 @@ export default function ApplicationsPage() {
         : undefined;
 
     return (
-        <div className="flex flex-col h-full gap-6 relative">
-            <div className="flex items-center justify-between shrink-0">
-                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 flex items-center gap-3">
-                    <ClipboardList className="text-blue-500" /> Applications
-                </h1>
+        <div className="relative flex h-full flex-col gap-6">
+            <PageHeader
+                title="Applications"
+                subtitle={subtitle}
+                action={
+                    view === 'list' ? (
+                        <Button onClick={startCreate}>Track an application</Button>
+                    ) : (
+                        <Button variant="outline" onClick={() => { resetForm(); setView('list'); }}>Back to list</Button>
+                    )
+                }
+            />
 
-                {view === 'list' ? (
-                    <button
-                        onClick={startCreate}
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors shadow-sm"
-                    >
-                        <Plus size={18} /> Add Application
-                    </button>
-                ) : (
-                    <button
-                        onClick={() => { resetForm(); setView('list'); }}
-                        className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg font-semibold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm"
-                    >
-                        <ArrowLeft size={18} /> Back to List
-                    </button>
-                )}
-            </div>
-
-            {notification && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 z-10 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-4 py-2 rounded-full border border-emerald-200 dark:border-emerald-800 shadow-lg flex items-center gap-2 animate-in slide-in-from-top-4 fade-in duration-300">
-                    <CheckCircle2 size={16} />
-                    <span className="text-sm font-semibold">{notification}</span>
-                </div>
-            )}
-            {error && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 z-10 bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-300 px-4 py-2 rounded-full border border-red-200 dark:border-red-800 shadow-lg flex items-center gap-2 animate-in slide-in-from-top-4 fade-in duration-300">
-                    <span className="text-sm font-semibold">Error: {error}</span>
-                </div>
-            )}
+            <Toast message={notification} variant="success" />
+            <Toast message={error} variant="error" />
 
             {view === 'form' && (
-                <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm max-w-2xl animate-in fade-in zoom-in-95 duration-200">
-                    <h2 className="text-xl font-bold mb-6 text-slate-800 dark:text-slate-200">
-                        {editingApp ? 'Edit Application' : 'Track New Application'}
+                <Card className="max-w-2xl p-6 animate-in fade-in zoom-in-95 duration-200">
+                    <h2 className="mb-6 font-serif text-xl font-semibold text-ink dark:text-cream">
+                        {editingApp ? 'Edit application' : 'Track new application'}
                     </h2>
                     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Company</label>
-                                <input className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                <label className={labelCls}>Company</label>
+                                <input className={inputCls}
                                     placeholder="e.g. Acme Corp"
                                     value={form.company}
                                     onChange={e => setForm({ ...form, company: e.target.value })}
@@ -223,8 +206,8 @@ export default function ApplicationsPage() {
                                 />
                             </div>
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Role Title</label>
-                                <input className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                <label className={labelCls}>Role title</label>
+                                <input className={inputCls}
                                     placeholder="e.g. Software Engineer II"
                                     value={form.role_title}
                                     onChange={e => setForm({ ...form, role_title: e.target.value })}
@@ -232,37 +215,37 @@ export default function ApplicationsPage() {
                                 />
                             </div>
                             <div className="flex flex-col gap-1.5 md:col-span-2">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Job Posting URL</label>
-                                <input className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                <label className={labelCls}>Job posting URL</label>
+                                <input className={inputCls}
                                     placeholder="https://..."
                                     value={form.url}
                                     onChange={e => setForm({ ...form, url: e.target.value })}
                                 />
                             </div>
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Status</label>
+                                <label className={labelCls}>Status</label>
                                 <select
-                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    className={inputCls}
                                     value={form.status}
                                     onChange={e => setForm({ ...form, status: e.target.value as ApplicationStatus })}
                                 >
-                                    {APPLICATION_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+                                    {APPLICATION_STATUSES.map(s => <option key={s} value={s}>{STATUS_TOKENS[s].label}</option>)}
                                 </select>
                             </div>
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Date Applied</label>
+                                <label className={labelCls}>Date applied</label>
                                 <input
                                     type="date"
-                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    className={inputCls}
                                     value={form.applied_at}
                                     onChange={e => setForm({ ...form, applied_at: e.target.value })}
                                 />
                             </div>
                             {!editingApp && (
                                 <div className="flex flex-col gap-1.5 md:col-span-2">
-                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Archetype (optional)</label>
+                                    <label className={labelCls}>Archetype (optional)</label>
                                     <select
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        className={inputCls}
                                         value={form.archetype_id}
                                         onChange={e => setForm({ ...form, archetype_id: Number(e.target.value) })}
                                     >
@@ -272,150 +255,91 @@ export default function ApplicationsPage() {
                                 </div>
                             )}
                             <div className="flex flex-col gap-1.5 md:col-span-2">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Notes</label>
+                                <label className={labelCls}>Notes</label>
                                 <textarea
-                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-y min-h-[80px]"
+                                    className={`${inputCls} min-h-[80px] resize-y`}
                                     placeholder="Recruiter contact, interview notes, follow-up dates..."
                                     value={form.notes}
                                     onChange={e => setForm({ ...form, notes: e.target.value })}
                                 />
                             </div>
                         </div>
-                        <div className="flex justify-end mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-                            <button type="submit" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition-colors shadow-md">
-                                {editingApp ? <Check size={18} /> : <Plus size={18} />}
-                                {editingApp ? 'Update Application' : 'Save Application'}
-                            </button>
+                        <div className="mt-4 flex justify-end border-t border-paper-inset-border pt-4 dark:border-charcoal-inset-border">
+                            <Button type="submit" variant="accent">
+                                {editingApp ? 'Update application' : 'Save application'}
+                            </Button>
                         </div>
                     </form>
-                </div>
+                </Card>
             )}
 
             {view === 'list' && (
                 <>
-                    <div className="flex flex-wrap gap-2 shrink-0">
-                        <button
-                            onClick={() => setStatusFilter('all')}
-                            className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-                                statusFilter === 'all'
-                                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                            }`}
-                        >
-                            All ({applications.length})
-                        </button>
-                        {APPLICATION_STATUSES.map(s => {
-                            const count = applications.filter(a => a.status === s).length;
-                            return (
-                                <button
-                                    key={s}
-                                    onClick={() => setStatusFilter(s)}
-                                    className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-                                        statusFilter === s ? STATUS_STYLES[s] + ' ring-2 ring-offset-1 ring-current' : STATUS_STYLES[s] + ' opacity-60 hover:opacity-100'
-                                    }`}
-                                >
-                                    {STATUS_LABELS[s]} ({count})
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <FilterPills options={filterOptions} active={statusFilter} onChange={key => setStatusFilter(key as ApplicationStatus | 'all')} />
 
-                    <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-2 pb-6">
+                    <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-6 pr-2">
                         {filtered.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center p-12 text-center text-slate-500 bg-white/50 dark:bg-slate-800/20 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl h-64">
-                                <ClipboardList size={48} className="opacity-20 mb-4" />
-                                <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300">No applications yet</h3>
-                                <p className="max-w-xs mt-1">Track a job application manually, or hit "Track application" after generating a cover letter.</p>
-                            </div>
+                            <EmptyState
+                                title="No applications yet"
+                                description='Track a job application manually, or hit "Track application" after generating a cover letter.'
+                            />
                         ) : (
                             filtered.map(app => (
-                                <div key={app.id} className="shrink-0 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 flex items-center gap-4 transition-all hover:shadow-md animate-in fade-in duration-300 slide-in-from-bottom-2">
-                                    <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0 text-slate-400">
-                                        <Building2 size={20} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <h3 className="font-bold text-slate-900 dark:text-slate-100 truncate">{app.role_title}</h3>
+                                <Card key={app.id} className="flex shrink-0 items-center gap-4 p-4 animate-in fade-in duration-300 slide-in-from-bottom-2">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="truncate font-serif text-lg font-semibold text-ink dark:text-cream">{app.role_title}</span>
+                                            <span className="shrink-0 italic text-ink-muted dark:text-cream-muted">at {app.company}</span>
                                             {app.url && (
                                                 <button
                                                     onClick={() => openUrl(app.url!).catch(console.error)}
-                                                    className="text-slate-400 hover:text-blue-600 transition-colors shrink-0"
+                                                    className="shrink-0 text-ink-faint transition-colors hover:text-sienna dark:text-cream-faint dark:hover:text-sienna-dark"
                                                     title="Open job posting"
                                                 >
-                                                    <ExternalLink size={14} />
+                                                    <ExternalLink size={13} />
                                                 </button>
                                             )}
                                         </div>
-                                        <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{app.company} · Applied {formatDate(app.applied_at)}</p>
+                                        <p className="mt-[3px] truncate text-[12.5px] text-ink-muted dark:text-cream-muted">
+                                            Applied {formatDate(app.applied_at)}{app.cover_letter_id != null ? ' · letter attached' : ''}
+                                        </p>
                                     </div>
 
-                                    <select
-                                        value={app.status}
-                                        onChange={e => handleStatusChange(app, e.target.value as ApplicationStatus)}
-                                        className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border-0 outline-none cursor-pointer shrink-0 ${STATUS_STYLES[app.status]}`}
-                                    >
-                                        {APPLICATION_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-                                    </select>
+                                    <StatusBadge status={app.status} interactive onChange={s => handleStatusChange(app, s)} />
 
-                                    {app.cover_letter_id != null && (
-                                        <button
-                                            onClick={() => openViewLetter(app)}
-                                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors shrink-0"
-                                            title="View cover letter"
-                                        >
-                                            <FileText size={18} />
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={() => startEdit(app)}
-                                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors shrink-0"
-                                        title="Edit"
-                                    >
-                                        <Edit2 size={18} />
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(app.id)}
-                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"
-                                        title="Delete"
-                                    >
-                                        <Trash2 size={18} />
-                                    </button>
-                                </div>
+                                    <div className="flex shrink-0 items-center gap-1.5">
+                                        {app.cover_letter_id != null && (
+                                            <>
+                                                <Button variant="ghost-text" onClick={() => openViewLetter(app)}>letter</Button>
+                                                <span className="text-ink-faint dark:text-cream-faint">·</span>
+                                            </>
+                                        )}
+                                        <Button variant="ghost-text" onClick={() => startEdit(app)}>edit</Button>
+                                        <span className="text-ink-faint dark:text-cream-faint">·</span>
+                                        <Button variant="ghost-text" onClick={() => handleDelete(app.id)}>remove</Button>
+                                    </div>
+                                </Card>
                             ))
                         )}
                     </div>
                 </>
             )}
 
-            {/* View letter modal */}
-            {viewingApp && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setViewingApp(null)}>
-                    <div
-                        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 max-w-lg w-full mx-4 max-h-[80vh] flex flex-col animate-in zoom-in-95 fade-in duration-200"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
-                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                                <FileText size={18} className="text-blue-500" /> Cover Letter — {viewingApp.company}
-                            </h3>
-                            <button onClick={() => setViewingApp(null)} className="text-slate-400 hover:text-slate-600">
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <div className="p-6 overflow-y-auto">
-                            {letters === null ? (
-                                <p className="text-sm text-slate-500 italic">Loading...</p>
-                            ) : viewingLetter === null ? (
-                                <p className="text-sm text-slate-500 italic">This letter no longer exists — it may have been deleted from History.</p>
-                            ) : (
-                                <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                                    {viewingLetter!.content}
-                                </div>
-                            )}
-                        </div>
+            <Modal
+                open={!!viewingApp}
+                onClose={() => setViewingApp(null)}
+                title={viewingApp ? `Cover Letter — ${viewingApp.company}` : ''}
+            >
+                {letters === null ? (
+                    <p className="text-sm italic text-ink-muted dark:text-cream-muted">Loading...</p>
+                ) : viewingLetter === null ? (
+                    <p className="text-sm italic text-ink-muted dark:text-cream-muted">This letter no longer exists — it may have been deleted from History.</p>
+                ) : (
+                    <div className="whitespace-pre-wrap font-serif text-sm leading-relaxed text-ink dark:text-cream">
+                        {viewingLetter!.content}
                     </div>
-                </div>
-            )}
+                )}
+            </Modal>
         </div>
     );
 }

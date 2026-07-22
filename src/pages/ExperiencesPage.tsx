@@ -4,7 +4,8 @@ import {
     listBullets, createBullet, deleteBullet, updateBullet, BulletPoint,
     getEducationDetails, upsertEducationDetails, deleteEducationDetails,
 } from '../lib/tauri';
-import { Plus, Trash2, ChevronDown, ChevronUp, Edit2, Check, CheckCircle2, Briefcase, ArrowLeft, GraduationCap } from 'lucide-react';
+import { GraduationCap } from 'lucide-react';
+import { PageHeader, Button, Card, FilterPills, EmptyState, Toast, CategoryLabel } from '../components/ui';
 
 /// Mirrors the education arm of `normalize_category` in latex/template.rs.
 const isEducationCategory = (cat: string) =>
@@ -20,11 +21,15 @@ const splitBulletLines = (text: string): string[] =>
         .map(l => l.replace(/^\s*[•·▪‣◦*\-–—]\s*/, '').trim())
         .filter(l => l.length > 0);
 
+const inputCls = "w-full px-3 py-2 bg-paper dark:bg-charcoal-inset border border-paper-border dark:border-charcoal-border rounded text-sm text-ink dark:text-cream placeholder:text-ink-faint dark:placeholder:text-cream-faint focus:outline-none focus:ring-2 focus:ring-sienna/30 focus:border-sienna transition-all";
+const labelCls = "text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink-muted dark:text-cream-muted";
+
 export default function ExperiencesPage() {
     const [experiences, setExperiences] = useState<Experience[]>([]);
     const [expandedExpId, setExpandedExpId] = useState<number | null>(null);
     const [bullets, setBullets] = useState<Record<number, BulletPoint[]>>({});
-    
+    const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
     // View state
     const [view, setView] = useState<'list' | 'create'>('list');
     const [notification, setNotification] = useState<string | null>(null);
@@ -37,7 +42,7 @@ export default function ExperiencesPage() {
     const [customCategory, setCustomCategory] = useState('');
     const [eduForm, setEduForm] = useState(EMPTY_EDU_FORM);
     const [bulletsText, setBulletsText] = useState('');
-    
+
     // Bullet state
     const [newBulletContent, setNewBulletContent] = useState('');
     const [editingBulletId, setEditingBulletId] = useState<number | null>(null);
@@ -67,6 +72,10 @@ export default function ExperiencesPage() {
         try {
             const data = await listExperiences();
             setExperiences(data);
+            // Eager-load bullets for every experience so collapsed cards can show
+            // "{N} bullets" without requiring an expand first.
+            const bulletLists = await Promise.all(data.map(exp => listBullets(exp.id)));
+            setBullets(Object.fromEntries(data.map((exp, i) => [exp.id, bulletLists[i]])));
         } catch (error) {
             console.error('Failed to load experiences', error);
         }
@@ -231,11 +240,32 @@ export default function ExperiencesPage() {
         return Array.from(new Set([...defaults, ...existing]));
     }, [experiences]);
 
+    const categoryFilterOptions = useMemo(() => {
+        const counts: Record<string, number> = {};
+        for (const exp of experiences) {
+            counts[exp.category] = (counts[exp.category] || 0) + 1;
+        }
+        return [
+            { key: 'all', label: 'All', count: experiences.length },
+            ...Object.entries(counts).map(([cat, count]) => ({ key: cat, label: cat, count })),
+        ];
+    }, [experiences]);
+
+    const filteredExperiences = useMemo(
+        () => (categoryFilter === 'all' ? experiences : experiences.filter(e => e.category === categoryFilter)),
+        [experiences, categoryFilter],
+    );
+
+    const totalBullets = useMemo(
+        () => Object.values(bullets).reduce((sum, arr) => sum + arr.length, 0),
+        [bullets],
+    );
+
     // Format YYYY-MM to something nicer if needed, or leave it as is if it's Present
     const displayDate = (dateStr: string) => {
         if (!dateStr) return '';
         if (dateStr.toLowerCase() === 'present') return 'Present';
-        
+
         // Try parsing YYYY-MM
         const [year, month] = dateStr.split('-');
         if (year && month) {
@@ -246,113 +276,93 @@ export default function ExperiencesPage() {
     };
 
     return (
-        <div className="flex flex-col h-full gap-6 relative">
-            
-            {/* Header Area */}
-            <div className="flex items-center justify-between shrink-0">
-                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 flex items-center gap-3">
-                    <Briefcase className="text-blue-500" /> Experiences
-                </h1>
+        <div className="relative flex h-full flex-col gap-6">
+            <PageHeader
+                title="Experiences"
+                subtitle={`Your master record — ${experiences.length} ${experiences.length === 1 ? 'entry' : 'entries'}, ${totalBullets} bullet points`}
+                action={
+                    view === 'list' ? (
+                        <Button onClick={() => { resetForm(); setView('create'); }}>Add an entry</Button>
+                    ) : (
+                        <Button variant="outline" onClick={() => { resetForm(); setView('list'); }}>Back to list</Button>
+                    )
+                }
+            />
 
-                {view === 'list' ? (
-                    <button
-                        onClick={() => { resetForm(); setView('create'); }}
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors shadow-sm"
-                    >
-                        <Plus size={18} /> Add Experience
-                    </button>
-                ) : (
-                    <button
-                        onClick={() => { resetForm(); setView('list'); }}
-                        className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg font-semibold transition-colors border border-slate-200 dark:border-slate-700 shadow-sm"
-                    >
-                        <ArrowLeft size={18} /> Back to List
-                    </button>
-                )}
-            </div>
+            <Toast message={notification} variant="success" />
+            <Toast message={error} variant="error" />
 
-            {/* Notification Toast */}
-            {notification && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 z-10 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-4 py-2 rounded-full border border-emerald-200 dark:border-emerald-800 shadow-lg flex items-center gap-2 animate-in slide-in-from-top-4 fade-in duration-300">
-                    <CheckCircle2 size={16} />
-                    <span className="text-sm font-semibold">{notification}</span>
-                </div>
-            )}
-
-            {/* Error Toast */}
-            {error && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 z-10 bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-300 px-4 py-2 rounded-full border border-red-200 dark:border-red-800 shadow-lg flex items-center gap-2 animate-in slide-in-from-top-4 fade-in duration-300">
-                    <span className="text-sm font-semibold">Error: {error}</span>
-                </div>
+            {view === 'list' && experiences.length > 0 && (
+                <FilterPills options={categoryFilterOptions} active={categoryFilter} onChange={setCategoryFilter} />
             )}
 
             {view === 'create' && (
-                <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm max-w-3xl animate-in fade-in zoom-in-95 duration-200">
-                    <h2 className="text-xl font-bold mb-6 text-slate-800 dark:text-slate-200">
-                        {editingExp ? 'Edit Experience' : 'New Experience Details'}
+                <Card className="max-w-3xl p-6 animate-in fade-in zoom-in-95 duration-200">
+                    <h2 className="mb-6 font-serif text-xl font-semibold text-ink dark:text-cream">
+                        {editingExp ? 'Edit experience' : 'New experience details'}
                     </h2>
 
                     <form onSubmit={handleSubmitExp} className="flex flex-col gap-5">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Role Title</label>
-                                <input className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                    placeholder="e.g. Software Engineer" 
-                                    value={expForm.title} 
-                                    onChange={e => setExpForm({ ...expForm, title: e.target.value })} 
-                                    required 
+                                <label className={labelCls}>Role title</label>
+                                <input className={inputCls}
+                                    placeholder="e.g. Software Engineer"
+                                    value={expForm.title}
+                                    onChange={e => setExpForm({ ...expForm, title: e.target.value })}
+                                    required
                                 />
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Organization / Company</label>
-                                <input className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                    placeholder="e.g. Acme Corp" 
-                                    value={expForm.org} 
-                                    onChange={e => setExpForm({ ...expForm, org: e.target.value })} 
-                                    required 
+                                <label className={labelCls}>Organization / company</label>
+                                <input className={inputCls}
+                                    placeholder="e.g. Acme Corp"
+                                    value={expForm.org}
+                                    onChange={e => setExpForm({ ...expForm, org: e.target.value })}
+                                    required
                                 />
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Start Date</label>
-                                <input 
+                                <label className={labelCls}>Start date</label>
+                                <input
                                     type="month"
-                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                    value={expForm.start_date} 
-                                    onChange={e => setExpForm({ ...expForm, start_date: e.target.value })} 
-                                    required 
+                                    className={inputCls}
+                                    value={expForm.start_date}
+                                    onChange={e => setExpForm({ ...expForm, start_date: e.target.value })}
+                                    required
                                 />
                             </div>
 
                             <div className="flex flex-col gap-1.5">
                                 <div className="flex items-center justify-between">
-                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">End Date</label>
-                                    <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer hover:text-slate-700 dark:hover:text-slate-300">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={isCurrentJob} 
-                                            onChange={e => setIsCurrentJob(e.target.checked)} 
-                                            className="rounded text-blue-600 focus:ring-blue-500 bg-slate-100 border-slate-300"
+                                    <label className={labelCls}>End date</label>
+                                    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-muted hover:text-ink dark:text-cream-muted dark:hover:text-cream">
+                                        <input
+                                            type="checkbox"
+                                            checked={isCurrentJob}
+                                            onChange={e => setIsCurrentJob(e.target.checked)}
+                                            className="accent-sienna"
                                         />
                                         I currently work here
                                     </label>
                                 </div>
-                                <input 
+                                <input
                                     type="month"
                                     disabled={isCurrentJob}
-                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                    value={isCurrentJob ? '' : expForm.end_date} 
-                                    onChange={e => setExpForm({ ...expForm, end_date: e.target.value })} 
-                                    required={!isCurrentJob} 
+                                    className={`${inputCls} disabled:cursor-not-allowed disabled:opacity-50`}
+                                    value={isCurrentJob ? '' : expForm.end_date}
+                                    onChange={e => setExpForm({ ...expForm, end_date: e.target.value })}
+                                    required={!isCurrentJob}
                                 />
                             </div>
 
                             <div className="flex flex-col gap-1.5 md:col-span-2">
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Category</label>
+                                <label className={labelCls}>Category</label>
                                 <div className="flex gap-3">
-                                    <select 
-                                        className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                    <select
+                                        className={`flex-1 ${inputCls}`}
                                         value={expForm.category}
                                         onChange={e => setExpForm({ ...expForm, category: e.target.value })}
                                         required
@@ -365,7 +375,7 @@ export default function ExperiencesPage() {
                                     </select>
 
                                     {expForm.category === 'Other' && (
-                                        <input className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all animate-in fade-in slide-in-from-left-2"
+                                        <input className={`flex-1 ${inputCls} animate-in fade-in slide-in-from-left-2`}
                                             placeholder="Enter custom category"
                                             value={customCategory}
                                             onChange={e => setCustomCategory(e.target.value)}
@@ -378,11 +388,11 @@ export default function ExperiencesPage() {
                             {/* Bullet points (create only — existing entries manage bullets on their card) */}
                             {!editingExp && (
                                 <div className="flex flex-col gap-1.5 md:col-span-2">
-                                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">
-                                        Bullet Points <span className="font-normal text-slate-400 text-xs">(one per line — paste a list directly)</span>
+                                    <label className={labelCls}>
+                                        Bullet points <span className="text-[10px] font-normal normal-case tracking-normal text-ink-faint dark:text-cream-faint">(one per line — paste a list directly)</span>
                                     </label>
                                     <textarea
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-y min-h-[90px]"
+                                        className={`${inputCls} min-h-[90px] resize-y`}
                                         placeholder={"Built a REST API serving 10k req/s\nReduced deployment time by 60%"}
                                         value={bulletsText}
                                         onChange={e => setBulletsText(e.target.value)}
@@ -392,38 +402,38 @@ export default function ExperiencesPage() {
 
                             {/* Education-specific fields */}
                             {isEducationCategory(expForm.category === 'Other' ? customCategory : expForm.category) && (
-                                <div className="md:col-span-2 flex flex-col gap-4 p-4 rounded-xl bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/40 animate-in fade-in slide-in-from-top-2">
-                                    <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
-                                        <GraduationCap size={16} /> Education Details <span className="font-normal text-slate-400 text-xs">(all optional)</span>
+                                <div className="flex flex-col gap-4 rounded border border-paper-inset-border bg-paper-inset p-4 dark:border-charcoal-inset-border dark:bg-charcoal-inset md:col-span-2 animate-in fade-in slide-in-from-top-2">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-sienna dark:text-sienna-dark">
+                                        <GraduationCap size={16} /> Education details <span className="text-xs font-normal text-ink-faint dark:text-cream-faint">(all optional)</span>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div className="flex flex-col gap-1.5">
-                                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Degree &amp; Major</label>
-                                            <input className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                            <label className={labelCls}>Degree &amp; major</label>
+                                            <input className={inputCls}
                                                 placeholder="e.g. B.S. Computer Science"
                                                 value={eduForm.degree}
                                                 onChange={e => setEduForm({ ...eduForm, degree: e.target.value })}
                                             />
                                         </div>
                                         <div className="flex flex-col gap-1.5">
-                                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">GPA</label>
-                                            <input className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                            <label className={labelCls}>GPA</label>
+                                            <input className={inputCls}
                                                 placeholder="e.g. 3.87/4.0"
                                                 value={eduForm.gpa}
                                                 onChange={e => setEduForm({ ...eduForm, gpa: e.target.value })}
                                             />
                                         </div>
                                         <div className="flex flex-col gap-1.5 md:col-span-2">
-                                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Relevant Coursework</label>
-                                            <textarea className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-y min-h-[60px]"
+                                            <label className={labelCls}>Relevant coursework</label>
+                                            <textarea className={`${inputCls} min-h-[60px] resize-y`}
                                                 placeholder="e.g. Algorithms, Operating Systems, Machine Learning"
                                                 value={eduForm.coursework}
                                                 onChange={e => setEduForm({ ...eduForm, coursework: e.target.value })}
                                             />
                                         </div>
                                         <div className="flex flex-col gap-1.5 md:col-span-2">
-                                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Honors / Awards</label>
-                                            <input className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                            <label className={labelCls}>Honors / awards</label>
+                                            <input className={inputCls}
                                                 placeholder="e.g. Dean's List, magna cum laude"
                                                 value={eduForm.honors}
                                                 onChange={e => setEduForm({ ...eduForm, honors: e.target.value })}
@@ -434,141 +444,120 @@ export default function ExperiencesPage() {
                             )}
                         </div>
 
-                        <div className="flex justify-end mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-                            <button type="submit" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition-colors shadow-md">
-                                {editingExp ? <Check size={18} /> : <Plus size={18} />}
-                                {editingExp ? 'Update Experience' : 'Save Experience'}
-                            </button>
+                        <div className="mt-4 flex justify-end border-t border-paper-inset-border pt-4 dark:border-charcoal-inset-border">
+                            <Button type="submit" variant="accent">
+                                {editingExp ? 'Update experience' : 'Save experience'}
+                            </Button>
                         </div>
                     </form>
-                </div>
+                </Card>
             )}
 
             {/* Experience List */}
             {view === 'list' && (
-                <div className="flex flex-col gap-4 flex-1 overflow-y-auto pr-2 pb-6">
+                <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto pb-6 pr-2">
                     {experiences.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center p-12 text-center text-slate-500 bg-white/50 dark:bg-slate-800/20 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl h-64">
-                            <Briefcase size={48} className="opacity-20 mb-4" />
-                            <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300">No experiences yet</h3>
-                            <p className="max-w-xs mt-1">Click the "Add Experience" button above to get started, or upload a resume from the Onboarding tab.</p>
-                        </div>
+                        <EmptyState
+                            title="No experiences yet"
+                            description='Click "Add an entry" above to get started, or import a resume from the onboarding page.'
+                        />
+                    ) : filteredExperiences.length === 0 ? (
+                        <p className="p-8 text-center text-sm italic text-ink-muted dark:text-cream-muted">
+                            No experiences in this category.
+                        </p>
                     ) : (
-                        experiences.map(exp => (
+                        filteredExperiences.map(exp => (
                             // shrink-0: without it the fixed-height flex column compresses
                             // the (overflow-hidden) cards instead of letting the list scroll.
-                            <div key={exp.id} className="shrink-0 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all hover:shadow-md animate-in fade-in duration-300 slide-in-from-bottom-2">
-                                {/* Header */}
-                                <div 
-                                    className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-750"
+                            <Card key={exp.id} className="shrink-0 overflow-hidden animate-in fade-in duration-300 slide-in-from-bottom-2">
+                                <div
+                                    className="flex cursor-pointer items-start justify-between p-[22px] px-[26px]"
                                     onClick={() => toggleExpand(exp.id)}
                                 >
                                     <div>
-                                        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{exp.title} <span className="text-slate-500 font-normal">at {exp.org}</span></h3>
-                                        <div className="flex items-center gap-2 mt-1.5">
-                                            <span className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 px-2 py-0.5 rounded text-xs font-semibold">{exp.category}</span>
-                                            <span className="text-sm text-slate-500 dark:text-slate-400">
-                                                {displayDate(exp.start_date)} - {displayDate(exp.end_date)}
+                                        <div className="font-serif text-xl font-semibold text-ink dark:text-cream">
+                                            {exp.title} <span className="font-normal italic text-ink-muted dark:text-cream-muted">at {exp.org}</span>
+                                        </div>
+                                        <div className="mt-[7px] flex items-center gap-3.5">
+                                            <CategoryLabel>{exp.category}</CategoryLabel>
+                                            <span className="text-[12.5px] text-ink-muted dark:text-cream-muted">
+                                                {displayDate(exp.start_date)} — {displayDate(exp.end_date)}
                                             </span>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); startEdit(exp); }}
-                                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                                            title="Edit Experience"
-                                        >
-                                            <Edit2 size={18} />
-                                        </button>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); deleteExperience(exp.id).then(loadExperiences); }}
-                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                            title="Delete Experience"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                        <div className="p-1 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-400">
-                                            {expandedExpId === exp.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                    {expandedExpId === exp.id ? (
+                                        <div className="flex shrink-0 items-center gap-1.5">
+                                            <Button variant="ghost-text" onClick={e => { e.stopPropagation(); startEdit(exp); }}>edit</Button>
+                                            <span className="text-ink-faint dark:text-cream-faint">·</span>
+                                            <Button variant="ghost-text" onClick={e => { e.stopPropagation(); deleteExperience(exp.id).then(loadExperiences); }}>remove</Button>
+                                            <span className="text-ink-faint dark:text-cream-faint">·</span>
+                                            <Button variant="ghost-text" onClick={e => { e.stopPropagation(); toggleExpand(exp.id); }}>collapse</Button>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <span className="shrink-0 text-[13px] text-ink-muted dark:text-cream-muted">
+                                            {bullets[exp.id]?.length ?? 0} bullets ›
+                                        </span>
+                                    )}
                                 </div>
 
-                                {/* Expanded Content (Bullets) */}
                                 {expandedExpId === exp.id && (
-                                    <div className="p-5 pt-0 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20">
-                                        <h4 className="text-sm font-semibold text-slate-600 dark:text-slate-400 mt-4 mb-3 uppercase tracking-wider flex justify-between items-center">
-                                            <span>Bullet Points</span>
-                                            <span className="text-xs bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded text-slate-500 font-normal">
-                                                {bullets[exp.id]?.length || 0} items
-                                            </span>
-                                        </h4>
-                                        
-                                        <ul className="flex flex-col gap-2 mb-4">
+                                    <div className="border-t border-paper-inset-border bg-paper-inset px-[26px] pb-6 pt-5 dark:border-charcoal-inset-border dark:bg-charcoal-inset">
+                                        <div className="mb-3.5 text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink-muted dark:text-cream-muted">
+                                            Bullet points · {bullets[exp.id]?.length || 0}
+                                        </div>
+
+                                        <div className="flex flex-col gap-2.5">
                                             {bullets[exp.id]?.map(bullet => (
-                                                <li key={bullet.id} className="flex items-start gap-3 group bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
-                                                    <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                                                <div key={bullet.id} className="group flex items-start gap-3 text-sm leading-[1.55]">
                                                     {editingBulletId === bullet.id ? (
-                                                        <div className="flex-1 flex gap-2">
-                                                            <input 
+                                                        <div className="flex flex-1 gap-2">
+                                                            <input
                                                                 autoFocus
-                                                                className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-blue-400 dark:border-blue-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
+                                                                className={inputCls}
                                                                 value={editBulletContent}
-                                                                onChange={(e) => setEditBulletContent(e.target.value)}
-                                                                onKeyDown={(e) => { if (e.key === 'Enter') handleUpdateBullet(exp.id, bullet.id, bullet.sort_order); }}
+                                                                onChange={e => setEditBulletContent(e.target.value)}
+                                                                onKeyDown={e => { if (e.key === 'Enter') handleUpdateBullet(exp.id, bullet.id, bullet.sort_order); }}
                                                             />
-                                                            <button 
-                                                                onClick={() => handleUpdateBullet(exp.id, bullet.id, bullet.sort_order)} 
-                                                                className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-800 px-3 py-1.5 rounded font-medium transition-colors flex items-center gap-1"
-                                                            >
-                                                                <Check size={16}/> Save
-                                                            </button>
+                                                            <Button size="sm" onClick={() => handleUpdateBullet(exp.id, bullet.id, bullet.sort_order)}>
+                                                                Save
+                                                            </Button>
                                                         </div>
                                                     ) : (
-                                                        <div className="flex-1 text-slate-700 dark:text-slate-300 text-sm leading-relaxed">
-                                                            {bullet.content}
-                                                        </div>
+                                                        <>
+                                                            <span className="text-sienna dark:text-sienna-dark">—</span>
+                                                            <span className="flex-1 text-ink dark:text-cream">{bullet.content}</span>
+                                                            <div className="hidden shrink-0 items-center gap-2 group-hover:flex">
+                                                                <Button variant="ghost-text" onClick={() => { setEditingBulletId(bullet.id); setEditBulletContent(bullet.content); }}>
+                                                                    edit
+                                                                </Button>
+                                                                <Button variant="ghost-text" onClick={() => deleteBullet(bullet.id).then(() => loadBullets(exp.id))}>
+                                                                    delete
+                                                                </Button>
+                                                            </div>
+                                                        </>
                                                     )}
-                                                    
-                                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 bg-slate-50 dark:bg-slate-800/80 rounded-lg p-0.5 border border-slate-100 dark:border-slate-700">
-                                                        <button 
-                                                            onClick={() => { setEditingBulletId(bullet.id); setEditBulletContent(bullet.content); }} 
-                                                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
-                                                            title="Edit"
-                                                        >
-                                                            <Edit2 size={14}/>
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => deleteBullet(bullet.id).then(() => loadBullets(exp.id))} 
-                                                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={14}/>
-                                                        </button>
-                                                    </div>
-                                                </li>
+                                                </div>
                                             ))}
                                             {(!bullets[exp.id] || bullets[exp.id].length === 0) && (
-                                                <div className="text-center p-4 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-900/30">
-                                                    <p className="text-sm text-slate-500 italic">No bullet points yet. Add accomplishments below.</p>
-                                                </div>
+                                                <p className="text-sm italic text-ink-faint dark:text-cream-faint">
+                                                    No bullet points yet. Add accomplishments below.
+                                                </p>
                                             )}
-                                        </ul>
+                                        </div>
 
-                                        <form onSubmit={(e) => handleCreateBullet(exp.id, e)} className="flex gap-2">
+                                        <form onSubmit={e => handleCreateBullet(exp.id, e)} className="mt-[18px] flex gap-2.5">
                                             <input
-                                                className="flex-1 px-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                                placeholder="Describe a measurable achievement — or paste a whole list here..."
+                                                className={`flex-1 ${inputCls}`}
+                                                placeholder="Add an accomplishment — or paste a whole list…"
                                                 value={newBulletContent}
                                                 onChange={e => setNewBulletContent(e.target.value)}
                                                 onPaste={e => handleBulletPaste(exp.id, e)}
                                             />
-                                            <button type="submit" className="px-5 py-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-200 dark:hover:bg-white text-white dark:text-slate-900 text-sm font-semibold rounded-lg transition-colors shrink-0 shadow-sm flex items-center gap-2">
-                                                <Plus size={16}/> Add Bullet
-                                            </button>
+                                            <Button type="submit" variant="outline" strong size="sm">Add</Button>
                                         </form>
                                     </div>
                                 )}
-                            </div>
+                            </Card>
                         ))
                     )}
                 </div>

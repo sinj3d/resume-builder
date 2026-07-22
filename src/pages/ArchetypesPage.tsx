@@ -1,21 +1,30 @@
 import { useState, useEffect } from 'react';
-import { 
+import {
     listArchetypes, createArchetype, deleteArchetype, Archetype,
     listExperiences, Experience, listSkills, Skill,
     getArchetypeExperiences, tagExperience, untagExperience,
     getArchetypeSkills, tagSkill, untagSkill
 } from '../lib/tauri';
-import { Plus, Trash2, Tag, CheckSquare, Square, ChevronRight, Layers } from 'lucide-react';
+import { PageHeader, Button, Card, EmptyState, CategoryLabel } from '../components/ui';
+
+const inputCls = "w-full px-3 py-2 bg-paper dark:bg-charcoal-inset border border-paper-border dark:border-charcoal-border rounded text-sm text-ink dark:text-cream placeholder:text-ink-faint dark:placeholder:text-cream-faint focus:outline-none focus:ring-2 focus:ring-sienna/30 focus:border-sienna transition-all";
+const labelCls = "text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink-muted dark:text-cream-muted";
+
+interface ArchetypeCounts {
+    exp: number;
+    skill: number;
+}
 
 export default function ArchetypesPage() {
     const [archetypes, setArchetypes] = useState<Archetype[]>([]);
     const [name, setName] = useState('');
     const [selectedArchetype, setSelectedArchetype] = useState<Archetype | null>(null);
+    const [archetypeCounts, setArchetypeCounts] = useState<Record<number, ArchetypeCounts>>({});
 
     // Master lists
     const [experiences, setExperiences] = useState<Experience[]>([]);
     const [skillsMap, setSkillsMap] = useState<Record<string, Skill[]>>({});
-    
+
     // Tagged states for the selected archetype
     const [taggedExpIds, setTaggedExpIds] = useState<Set<number>>(new Set());
     const [taggedSkillIds, setTaggedSkillIds] = useState<Set<number>>(new Set());
@@ -29,6 +38,11 @@ export default function ArchetypesPage() {
         try {
             const data = await listArchetypes();
             setArchetypes(data);
+            const counts = await Promise.all(data.map(async a => {
+                const [exps, sks] = await Promise.all([getArchetypeExperiences(a.id), getArchetypeSkills(a.id)]);
+                return [a.id, { exp: exps.length, skill: sks.length }] as const;
+            }));
+            setArchetypeCounts(Object.fromEntries(counts));
         } catch (error) {
             console.error('Failed to load archetypes', error);
         }
@@ -38,7 +52,7 @@ export default function ArchetypesPage() {
         try {
             const exps = await listExperiences();
             setExperiences(exps);
-            
+
             const skills = await listSkills();
             const sm: Record<string, Skill[]> = {};
             for (const s of skills) {
@@ -56,7 +70,7 @@ export default function ArchetypesPage() {
         try {
             const exps = await getArchetypeExperiences(arch.id);
             setTaggedExpIds(new Set(exps.map(e => e.id)));
-            
+
             const sks = await getArchetypeSkills(arch.id);
             setTaggedSkillIds(new Set(sks.map(s => s.id)));
         } catch (error) {
@@ -77,21 +91,30 @@ export default function ArchetypesPage() {
 
     const toggleExpTag = async (expId: number) => {
         if (!selectedArchetype) return;
+        const archId = selectedArchetype.id;
         try {
             if (taggedExpIds.has(expId)) {
-                await untagExperience(selectedArchetype.id, expId);
+                await untagExperience(archId, expId);
                 setTaggedExpIds(prev => {
                     const next = new Set(prev);
                     next.delete(expId);
                     return next;
                 });
+                setArchetypeCounts(prev => ({
+                    ...prev,
+                    [archId]: { ...prev[archId], exp: (prev[archId]?.exp ?? 1) - 1 },
+                }));
             } else {
-                await tagExperience(selectedArchetype.id, expId);
+                await tagExperience(archId, expId);
                 setTaggedExpIds(prev => {
                     const next = new Set(prev);
                     next.add(expId);
                     return next;
                 });
+                setArchetypeCounts(prev => ({
+                    ...prev,
+                    [archId]: { ...prev[archId], exp: (prev[archId]?.exp ?? 0) + 1 },
+                }));
             }
         } catch (error) {
             console.error('Failed to toggle experience tag', error);
@@ -100,21 +123,30 @@ export default function ArchetypesPage() {
 
     const toggleSkillTag = async (skillId: number) => {
         if (!selectedArchetype) return;
+        const archId = selectedArchetype.id;
         try {
             if (taggedSkillIds.has(skillId)) {
-                await untagSkill(selectedArchetype.id, skillId);
+                await untagSkill(archId, skillId);
                 setTaggedSkillIds(prev => {
                     const next = new Set(prev);
                     next.delete(skillId);
                     return next;
                 });
+                setArchetypeCounts(prev => ({
+                    ...prev,
+                    [archId]: { ...prev[archId], skill: (prev[archId]?.skill ?? 1) - 1 },
+                }));
             } else {
-                await tagSkill(selectedArchetype.id, skillId);
+                await tagSkill(archId, skillId);
                 setTaggedSkillIds(prev => {
                     const next = new Set(prev);
                     next.add(skillId);
                     return next;
                 });
+                setArchetypeCounts(prev => ({
+                    ...prev,
+                    [archId]: { ...prev[archId], skill: (prev[archId]?.skill ?? 0) + 1 },
+                }));
             }
         } catch (error) {
             console.error('Failed to toggle skill tag', error);
@@ -137,98 +169,94 @@ export default function ArchetypesPage() {
     };
 
     return (
-        <div className="flex flex-col h-full gap-6">
-            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 flex items-center gap-3">
-                <Tag className="text-blue-500" /> Archetypes
-            </h1>
+        <div className="flex h-full flex-col gap-6">
+            <PageHeader title="Archetypes" subtitle="One record, many tellings — a profile per kind of role" />
 
-            <div className="flex flex-col lg:flex-row gap-6 flex-1 h-full min-h-0">
+            <div className="flex h-full min-h-0 flex-1 flex-col gap-5 lg:flex-row">
                 {/* Left Panel: Archetype List */}
-                <div className="w-full lg:w-1/3 flex flex-col gap-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-full">
-                        <form onSubmit={handleSubmit} className="flex gap-2 mb-6">
-                            <input 
-                                className="flex-1 px-3 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                placeholder="New Archetype (e.g. Frontend)" 
-                                value={name} 
-                                onChange={e => setName(e.target.value)} 
-                                required 
+                <div className="flex w-full flex-col lg:w-[300px] lg:shrink-0">
+                    <Card className="flex h-full flex-col p-5">
+                        <form onSubmit={handleSubmit} className="mb-4 flex gap-2">
+                            <input
+                                className={`flex-1 ${inputCls}`}
+                                placeholder="Name a new archetype…"
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                required
                             />
-                            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors flex items-center justify-center">
-                                <Plus size={18} />
-                            </button>
+                            <Button type="submit" variant="outline" strong size="sm">Add</Button>
                         </form>
 
                         <div className="flex-1 overflow-y-auto">
-                            <ul className="flex flex-col gap-2 pr-2">
-                                {archetypes.map(a => (
-                                    <li 
-                                        key={a.id} 
-                                        className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border ${
-                                            selectedArchetype?.id === a.id 
-                                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 shadow-sm' 
-                                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
-                                        }`}
-                                        onClick={() => handleSelectArchetype(a)}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-lg ${selectedArchetype?.id === a.id ? 'bg-blue-100 text-blue-600 dark:bg-blue-800 dark:text-blue-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
-                                                <Layers size={16} />
-                                            </div>
-                                            <span className={`font-semibold ${selectedArchetype?.id === a.id ? 'text-blue-900 dark:text-blue-100' : 'text-slate-700 dark:text-slate-300'}`}>
-                                                {a.name}
-                                            </span>
-                                        </div>
-                                        
-                                        <div className="flex items-center gap-2">
-                                            <button 
-                                                onClick={(e) => handleDeleteArch(e, a.id)}
-                                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            <ul className="flex flex-col gap-2.5 pr-1">
+                                {archetypes.map(a => {
+                                    const isSelected = selectedArchetype?.id === a.id;
+                                    const counts = archetypeCounts[a.id];
+                                    return (
+                                        <li key={a.id}>
+                                            <Card
+                                                selected={isSelected}
+                                                onClick={() => handleSelectArchetype(a)}
+                                                className="group flex items-center justify-between p-4"
                                             >
-                                                <Trash2 size={16} />
-                                            </button>
-                                            <ChevronRight size={16} className={selectedArchetype?.id === a.id ? 'text-blue-500' : 'text-slate-300 dark:text-slate-600'} />
-                                        </div>
-                                    </li>
-                                ))}
+                                                <div>
+                                                    <div className={`font-serif text-[17px] font-semibold ${isSelected ? 'text-sienna dark:text-sienna-dark' : 'text-ink dark:text-cream'}`}>
+                                                        {a.name}
+                                                    </div>
+                                                    <div className="mt-[3px] text-[11.5px] text-ink-muted dark:text-cream-muted">
+                                                        {counts ? `${counts.exp} experiences · ${counts.skill} skills` : '—'}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2.5">
+                                                    <Button
+                                                        variant="ghost-text"
+                                                        className="opacity-0 group-hover:opacity-100"
+                                                        onClick={e => handleDeleteArch(e, a.id)}
+                                                    >
+                                                        remove
+                                                    </Button>
+                                                    <span className={isSelected ? 'text-sienna dark:text-sienna-dark' : 'text-ink-faint dark:text-cream-faint'}>›</span>
+                                                </div>
+                                            </Card>
+                                        </li>
+                                    );
+                                })}
                                 {archetypes.length === 0 && (
-                                    <p className="text-sm text-slate-500 italic text-center py-8">No archetypes created yet.</p>
+                                    <p className="py-8 text-center text-sm italic text-ink-muted dark:text-cream-muted">
+                                        No archetypes created yet.
+                                    </p>
                                 )}
                             </ul>
                         </div>
-                    </div>
+                    </Card>
                 </div>
 
-                {/* Right Panel: Dual Checkbox Matrix */}
-                <div className="w-full lg:w-2/3 flex flex-col">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col h-full overflow-hidden">
-                        <div className="p-5 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20">
-                            <h2 className="font-semibold text-lg text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                                {selectedArchetype ? (
-                                    <>Tagging: <span className="text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/50 px-3 py-1 rounded-full text-sm">{selectedArchetype.name}</span></>
-                                ) : (
-                                    "Select an archetype to start tagging"
-                                )}
-                            </h2>
+                {/* Right Panel: Tagging */}
+                <div className="flex w-full flex-1 flex-col">
+                    <Card className="flex h-full flex-col overflow-hidden">
+                        <div className="border-b border-paper-inset-border bg-paper-inset px-6 py-4 text-sm text-ink dark:border-charcoal-inset-border dark:bg-charcoal-inset dark:text-cream">
+                            {selectedArchetype ? (
+                                <>Tagging <span className="font-serif font-semibold italic text-sienna dark:text-sienna-dark">{selectedArchetype.name}</span></>
+                            ) : (
+                                'Select an archetype to start tagging'
+                            )}
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-5">
+                        <div className="flex-1 overflow-y-auto p-6">
                             {!selectedArchetype ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 gap-3 text-center">
-                                    <Tag size={48} className="opacity-20" />
-                                    <p>Select an archetype from the list on the left to assign experiences and skills to it.</p>
-                                </div>
+                                <EmptyState
+                                    title="Nothing selected"
+                                    description="Select an archetype from the list on the left to assign experiences and skills to it."
+                                />
                             ) : (
-                                <div className="flex flex-col gap-10 pr-2">
+                                <div className="flex flex-col gap-8">
                                     {/* Skills Section */}
-                                    <div className="flex flex-col gap-4">
-                                        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-2">
-                                            1. Include Skills
-                                        </h3>
-                                        <div className="flex flex-col gap-6 pl-2">
+                                    <div className="flex flex-col gap-3">
+                                        <div className={labelCls}>1 · Skills to include</div>
+                                        <div className="flex flex-col gap-5">
                                             {Object.entries(skillsMap).map(([category, sks]) => (
-                                                <div key={category} className="flex flex-col gap-3">
-                                                    <h4 className="font-semibold text-slate-700 dark:text-slate-300">{category}</h4>
+                                                <div key={category} className="flex flex-col gap-2.5">
+                                                    <h4 className="text-sm font-semibold text-ink dark:text-cream">{category}</h4>
                                                     <div className="flex flex-wrap gap-2">
                                                         {sks.map(skill => {
                                                             const isTagged = taggedSkillIds.has(skill.id);
@@ -236,14 +264,13 @@ export default function ArchetypesPage() {
                                                                 <button
                                                                     key={skill.id}
                                                                     onClick={() => toggleSkillTag(skill.id)}
-                                                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-sm ${
-                                                                        isTagged 
-                                                                        ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-sm font-medium' 
-                                                                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
+                                                                    className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition-all ${
+                                                                        isTagged
+                                                                            ? 'border border-sienna bg-[rgba(138,61,34,.06)] text-sienna dark:border-sienna-dark dark:bg-[rgba(217,140,95,.10)] dark:text-sienna-dark'
+                                                                            : 'border border-paper-border text-ink-muted-2 hover:border-ink-muted dark:border-charcoal-border dark:text-cream-muted'
                                                                     }`}
                                                                 >
-                                                                    {isTagged ? <CheckSquare size={16} /> : <Square size={16} />}
-                                                                    {skill.name}
+                                                                    {isTagged ? '✓ ' : ''}{skill.name}
                                                                 </button>
                                                             );
                                                         })}
@@ -251,63 +278,50 @@ export default function ArchetypesPage() {
                                                 </div>
                                             ))}
                                             {Object.keys(skillsMap).length === 0 && (
-                                                <p className="text-sm text-slate-500 italic">No skills exist yet. Add them in the Profiler tab.</p>
+                                                <p className="text-sm italic text-ink-muted dark:text-cream-muted">No skills exist yet. Add them on the Profile page.</p>
                                             )}
                                         </div>
                                     </div>
 
                                     {/* Experiences Section */}
-                                    <div className="flex flex-col gap-4">
-                                        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-700 pb-2">
-                                            2. Include Experiences
-                                        </h3>
-                                        <p className="text-sm text-slate-500 dark:text-slate-400 pl-2">
-                                            Select entire experiences to include. All of their bullet points will be transferred automatically.
-                                        </p>
-                                        <div className="flex flex-col gap-3 pl-2">
+                                    <div className="flex flex-col gap-3">
+                                        <div className={labelCls}>
+                                            2 · Experiences to include{' '}
+                                            <span className="normal-case tracking-normal text-ink-faint dark:text-cream-faint">— all of their bullets travel with them</span>
+                                        </div>
+                                        <div className="flex flex-col gap-2.5">
                                             {experiences.map(exp => {
                                                 const isTagged = taggedExpIds.has(exp.id);
                                                 return (
-                                                    <div 
+                                                    <Card
                                                         key={exp.id}
+                                                        selected={isTagged}
                                                         onClick={() => toggleExpTag(exp.id)}
-                                                        className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer ${
-                                                            isTagged 
-                                                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 shadow-md' 
-                                                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750'
-                                                        }`}
+                                                        className="flex items-center justify-between p-3.5"
                                                     >
-                                                        <div className="flex flex-col gap-1">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="text-blue-500">
-                                                                    {isTagged ? <CheckSquare size={20} className="text-blue-600 dark:text-blue-400" /> : <Square size={20} className="text-slate-300 dark:text-slate-600" />}
-                                                                </div>
-                                                                <span className={`font-semibold text-lg ${isTagged ? 'text-blue-900 dark:text-blue-100' : 'text-slate-800 dark:text-slate-200'}`}>
-                                                                    {exp.title}
-                                                                </span>
-                                                            </div>
-                                                            <div className="pl-8 text-sm text-slate-500 dark:text-slate-400">
-                                                                {exp.org} • {exp.start_date} to {exp.end_date || 'Present'}
-                                                            </div>
+                                                        <div className="flex items-baseline gap-3">
+                                                            <span className={isTagged ? 'font-semibold text-sienna dark:text-sienna-dark' : 'text-ink-faint dark:text-cream-faint'}>
+                                                                {isTagged ? '✓' : '◻'}
+                                                            </span>
+                                                            <span className="font-serif text-base font-semibold text-ink dark:text-cream">
+                                                                {exp.title}
+                                                            </span>
+                                                            <span className="text-[12.5px] italic text-ink-muted dark:text-cream-muted">{exp.org}</span>
                                                         </div>
-                                                        <div className="bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 text-xs font-semibold px-2 py-1 rounded-md uppercase tracking-wider">
-                                                            {exp.category}
-                                                        </div>
-                                                    </div>
+                                                        <CategoryLabel muted={!isTagged}>{exp.category}</CategoryLabel>
+                                                    </Card>
                                                 );
                                             })}
-
                                             {experiences.length === 0 && (
-                                                <p className="text-sm text-slate-500 italic">No experiences exist yet. Go to the Experiences tab to add some.</p>
+                                                <p className="text-sm italic text-ink-muted dark:text-cream-muted">No experiences exist yet. Go to the Experiences page to add some.</p>
                                             )}
                                         </div>
                                     </div>
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </Card>
                 </div>
-
             </div>
         </div>
     );

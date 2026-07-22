@@ -3,45 +3,8 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: #f8fafc; /* slate-50 */
-    --foreground: #0f172a; /* slate-900 */
-    --card: rgba(255, 255, 255, 0.7);
-    --card-border: rgba(255, 255, 255, 0.5);
-    --primary: #3b82f6; /* blue-500 */
-    --primary-foreground: #ffffff;
-    --sidebar: rgba(255, 255, 255, 0.85);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --background: #0f172a; /* slate-900 */
-      --foreground: #f8fafc; /* slate-50 */
-      --card: rgba(30, 41, 59, 0.6); /* slate-800 with opacity */
-      --card-border: rgba(255, 255, 255, 0.1);
-      --primary: #60a5fa; /* blue-400 */
-      --primary-foreground: #0f172a;
-      --sidebar: rgba(15, 23, 42, 0.85);
-    }
-  }
-
   body {
-    @apply bg-[var(--background)] text-[var(--foreground)] font-sans antialiased;
-    /* Soft background gradient */
-    background-image: 
-      radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-      radial-gradient(at 50% 0%, hsla(225,39%,30%,0.2) 0, transparent 50%), 
-      radial-gradient(at 100% 0%, hsla(339,49%,30%,0.2) 0, transparent 50%);
-    background-attachment: fixed;
-  }
-}
-
-@layer utilities {
-  .glass {
-    @apply bg-[var(--card)] backdrop-blur-md border border-[var(--card-border)] shadow-xl;
-  }
-  .glass-panel {
-    @apply bg-[var(--sidebar)] backdrop-blur-xl border border-[var(--card-border)] shadow-2xl;
+    @apply bg-paper text-ink font-sans antialiased dark:bg-charcoal dark:text-cream;
   }
 }
 
@@ -54,9 +17,9 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(150, 150, 150, 0.3);
+  background: rgba(154, 140, 112, 0.35);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(150, 150, 150, 0.5);
+  background: rgba(154, 140, 112, 0.55);
 }

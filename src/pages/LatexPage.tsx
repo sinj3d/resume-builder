@@ -14,9 +14,10 @@ import HtmlResume, { SAMPLE_RESUME, PAGE_W_PX } from '../components/HtmlResume';
 import { save } from '@tauri-apps/plugin-dialog';
 import { Document, Page, pdfjs } from 'react-pdf';
 import {
-    Code, FileCode2, AlertCircle, DownloadCloud, CheckCircle2, Download, Loader2,
+    Code, FileCode2, AlertCircle, DownloadCloud, Download, Loader2,
     Palette, Eye, FileText,
 } from 'lucide-react';
+import { Button, Card, Toast } from '../components/ui';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 // Self-host the pdf.js worker (bundled by Vite) so the preview works fully
@@ -28,6 +29,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const COMPILE_DEBOUNCE_MS = 600;
 const SAVE_DEBOUNCE_MS = 1200;
+
+const inputCls = "px-3 py-2 text-sm bg-paper dark:bg-charcoal-inset border border-paper-border dark:border-charcoal-border rounded text-ink dark:text-cream focus:outline-none focus:ring-2 focus:ring-sienna/30 focus:border-sienna transition-all";
+const labelCls = "text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink-muted dark:text-cream-muted";
 
 /**
  * Flicker-free PDF preview: the current document stays visible while the next
@@ -121,12 +125,12 @@ function PresetThumb({ preset, data, onApply }: {
             className="shrink-0 flex flex-col items-center gap-1.5 group"
             title={`Apply ${preset.name}`}
         >
-            <div className="w-[148px] h-[192px] overflow-hidden rounded-md border border-slate-300 dark:border-slate-600 shadow-sm group-hover:border-blue-500 group-hover:shadow-md transition-all bg-white">
+            <div className="w-[148px] h-[192px] overflow-hidden rounded-md border border-paper-border dark:border-charcoal-border shadow-sm group-hover:border-sienna dark:group-hover:border-sienna-dark group-hover:shadow-md transition-all bg-white">
                 <div className="pointer-events-none origin-top-left" style={{ transform: `scale(${scale})` }}>
                     <HtmlResume data={data} layout={preset.config} />
                 </div>
             </div>
-            <span className="text-xs font-medium text-slate-600 dark:text-slate-400 group-hover:text-blue-600">
+            <span className="text-xs font-medium text-ink-muted-2 dark:text-cream-muted group-hover:text-sienna dark:group-hover:text-sienna-dark">
                 {preset.name}
             </span>
         </button>
@@ -389,13 +393,11 @@ export default function LatexPage() {
         <div className="flex flex-col h-full gap-3">
             {/* ── Header Row ── */}
             <div className="flex flex-wrap justify-between items-center gap-4 shrink-0">
-                <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 flex items-center gap-3">
-                    <FileCode2 className="text-blue-500" /> Resume Editor
-                </h1>
+                <h1 className="font-serif text-2xl font-semibold text-ink dark:text-cream">Resume Editor</h1>
 
                 <div className="flex flex-wrap gap-3 items-center">
                     <select
-                        className="px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 outline-none"
+                        className={inputCls}
                         value={selectedArchetype}
                         onChange={e => setSelectedArchetype(Number(e.target.value) || '')}
                     >
@@ -403,45 +405,24 @@ export default function LatexPage() {
                         {archetypes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
 
-                    <button
-                        onClick={handleInject}
-                        disabled={injecting || selectedArchetype === ''}
-                        className={`px-4 py-2 rounded-lg font-semibold text-white transition-all shadow-md flex items-center gap-2 text-sm ${
-                            injecting || selectedArchetype === ''
-                            ? 'bg-slate-400 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 hover:shadow-lg'
-                        }`}
-                    >
-                        <DownloadCloud size={15} /> Inject to Editor
-                    </button>
+                    <Button variant="outline" strong size="sm" onClick={handleInject} disabled={injecting || selectedArchetype === ''}>
+                        <DownloadCloud size={15} /> Inject to editor
+                    </Button>
 
-                    <button
-                        onClick={handleDownload}
-                        disabled={downloading || (!pdfBytes && !source.trim())}
-                        className={`px-4 py-2 rounded-lg font-semibold text-white transition-all shadow-md flex items-center gap-2 text-sm ${
-                            downloading
-                            ? 'bg-slate-400 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 hover:shadow-lg'
-                        }`}
-                    >
+                    <Button variant="accent" size="sm" onClick={handleDownload} disabled={downloading || (!pdfBytes && !source.trim())}>
                         {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                         Download PDF
-                    </button>
+                    </Button>
                 </div>
             </div>
 
             {/* ── Notifications ── */}
             <div className="relative shrink-0">
-                {notification && (
-                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 z-20 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 px-4 py-2 rounded-full border border-emerald-200 dark:border-emerald-800 shadow-lg flex items-center gap-2 animate-in slide-in-from-top-4 fade-in duration-300 whitespace-nowrap">
-                        <CheckCircle2 size={16} />
-                        <span className="text-sm font-semibold">{notification}</span>
-                    </div>
-                )}
+                <Toast message={notification} variant="success" />
                 {error && (
-                    <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex gap-3 border border-red-200 dark:border-red-800 w-full max-h-32 overflow-y-auto">
+                    <div className="flex w-full max-h-32 gap-3 overflow-y-auto rounded border border-[#a1453a]/30 bg-[#a1453a]/5 p-3 text-[#a1453a] dark:border-[#d97567]/30 dark:bg-[#d97567]/5 dark:text-[#d97567]">
                         <AlertCircle className="shrink-0" />
-                        <p className="text-sm font-medium whitespace-pre-wrap">{error}</p>
+                        <p className="whitespace-pre-wrap text-sm font-medium">{error}</p>
                     </div>
                 )}
             </div>
@@ -451,13 +432,13 @@ export default function LatexPage() {
 
                 {/* Left: design controls / LaTeX source */}
                 <div className="w-[46%] min-w-[380px] flex flex-col min-h-0 gap-2">
-                    <div className="flex gap-1 shrink-0 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg self-start">
+                    <div className="flex gap-1 shrink-0 bg-paper-inset dark:bg-charcoal-inset p-1 rounded-lg self-start">
                         <button
                             onClick={() => setLeftTab('design')}
                             className={`px-4 py-1.5 rounded-md text-sm font-semibold flex items-center gap-2 transition-colors ${
                                 leftTab === 'design'
-                                ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                    ? 'bg-paper-card dark:bg-charcoal-card text-sienna dark:text-sienna-dark shadow-sm'
+                                    : 'text-ink-muted hover:text-ink dark:text-cream-muted dark:hover:text-cream'
                             }`}
                         >
                             <Palette size={14} /> Design
@@ -466,8 +447,8 @@ export default function LatexPage() {
                             onClick={() => setLeftTab('source')}
                             className={`px-4 py-1.5 rounded-md text-sm font-semibold flex items-center gap-2 transition-colors ${
                                 leftTab === 'source'
-                                ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                    ? 'bg-paper-card dark:bg-charcoal-card text-sienna dark:text-sienna-dark shadow-sm'
+                                    : 'text-ink-muted hover:text-ink dark:text-cream-muted dark:hover:text-cream'
                             }`}
                         >
                             <Code size={14} /> LaTeX Source
@@ -477,8 +458,8 @@ export default function LatexPage() {
                     {leftTab === 'design' ? (
                         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 pr-1 pb-2">
                             {/* Template gallery */}
-                            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 shrink-0">
-                                <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Templates</div>
+                            <Card className="p-4 shrink-0">
+                                <div className={`mb-3 ${labelCls}`}>Templates</div>
                                 <div className="flex gap-3 overflow-x-auto pb-2">
                                     {presets.map(p => (
                                         <PresetThumb
@@ -489,7 +470,7 @@ export default function LatexPage() {
                                         />
                                     ))}
                                 </div>
-                            </div>
+                            </Card>
 
                             <div className="shrink-0">
                                 <LayoutControls
@@ -506,28 +487,31 @@ export default function LatexPage() {
                             )}
                         </div>
                     ) : (
-                        <div className="flex-1 min-h-0 flex flex-col border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
-                            <div className="bg-slate-100 dark:bg-slate-800 py-1.5 px-4 border-b border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-400 flex items-center justify-between">
+                        <div className="flex-1 min-h-0 flex flex-col border border-paper-border dark:border-charcoal-border rounded overflow-hidden shadow-sm">
+                            <div className="bg-paper-inset dark:bg-charcoal-inset py-1.5 px-4 border-b border-paper-border dark:border-charcoal-border text-sm font-semibold text-ink-muted-2 dark:text-cream-muted flex items-center justify-between">
                                 <span>main.tex</span>
                                 <div className="flex items-center gap-3">
-                                    <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500 cursor-pointer select-none">
+                                    <label className="flex items-center gap-1.5 text-xs font-medium text-ink-muted dark:text-cream-muted cursor-pointer select-none">
                                         <input
                                             type="checkbox"
                                             checked={autoCompile}
                                             onChange={e => setAutoCompile(e.target.checked)}
-                                            className="rounded text-blue-600"
+                                            className="accent-sienna"
                                         />
                                         Auto-compile
                                     </label>
                                     <button
                                         onClick={handleManualCompile}
                                         disabled={compiling}
-                                        className="px-3 py-1 rounded-md text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 flex items-center gap-1.5"
+                                        className="px-3 py-1 rounded-md text-xs font-semibold text-paper dark:text-charcoal bg-ink dark:bg-cream hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
                                     >
                                         <Code size={12} /> Compile
                                     </button>
                                 </div>
                             </div>
+                            {/* Monaco's own vs-dark theme is intentionally left as-is regardless
+                                of app theme — a dark code editor on a light page is a normal,
+                                expected convention. */}
                             <div className="flex-1 bg-[#1e1e1e]">
                                 <Editor
                                     height="100%"
@@ -548,15 +532,15 @@ export default function LatexPage() {
                 </div>
 
                 {/* Right: resume preview */}
-                <div className="flex-1 flex flex-col min-h-0 bg-slate-200 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-inner relative" ref={previewPaneRef}>
+                <div className="flex-1 flex flex-col min-h-0 bg-paper-inset dark:bg-charcoal-inset border border-paper-border dark:border-charcoal-border rounded overflow-hidden shadow-inner relative" ref={previewPaneRef}>
                     {/* Preview mode toggle */}
-                    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex gap-1 bg-white/90 dark:bg-slate-800/90 backdrop-blur p-1 rounded-full shadow-lg border border-slate-200 dark:border-slate-700">
+                    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex gap-1 bg-paper-card/90 dark:bg-charcoal-card/90 backdrop-blur p-1 rounded-full shadow-lg border border-paper-border dark:border-charcoal-border">
                         <button
                             onClick={() => switchPreviewMode('live')}
                             className={`px-3.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                                 previewMode === 'live'
-                                ? 'bg-blue-600 text-white'
-                                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                    ? 'bg-ink text-paper dark:bg-cream dark:text-charcoal'
+                                    : 'text-ink-muted hover:text-ink dark:text-cream-muted dark:hover:text-cream'
                             }`}
                         >
                             <Eye size={12} /> Live
@@ -565,8 +549,8 @@ export default function LatexPage() {
                             onClick={() => switchPreviewMode('pdf')}
                             className={`px-3.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                                 previewMode === 'pdf'
-                                ? 'bg-blue-600 text-white'
-                                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                    ? 'bg-ink text-paper dark:bg-cream dark:text-charcoal'
+                                    : 'text-ink-muted hover:text-ink dark:text-cream-muted dark:hover:text-cream'
                             }`}
                         >
                             <FileText size={12} /> PDF
@@ -574,14 +558,14 @@ export default function LatexPage() {
                     </div>
 
                     {previewMode === 'live' && (
-                        <span className="absolute top-4 right-3 z-10 text-[10px] font-medium text-slate-400 bg-white/70 dark:bg-slate-800/70 px-2 py-0.5 rounded-full">
+                        <span className="absolute top-4 right-3 z-10 text-[10px] font-medium text-ink-faint dark:text-cream-faint bg-paper-card/70 dark:bg-charcoal-card/70 px-2 py-0.5 rounded-full">
                             approximation — PDF tab is exact
                         </span>
                     )}
 
                     {/* Recompiling badge overlays the (still visible) old PDF */}
                     {previewMode === 'pdf' && compiling && (
-                        <div className="absolute top-4 right-3 z-10 flex items-center gap-2 bg-blue-600/90 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg">
+                        <div className="absolute top-4 right-3 z-10 flex items-center gap-2 bg-sienna/90 dark:bg-sienna-dark/90 text-paper dark:text-charcoal text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg">
                             <Loader2 size={13} className="animate-spin" /> Recompiling…
                         </div>
                     )}
@@ -595,7 +579,7 @@ export default function LatexPage() {
                                     <HtmlResume data={resumeData} layout={layout} />
                                 </div>
                             ) : (
-                                <div className="m-auto flex flex-col items-center gap-3 text-slate-400">
+                                <div className="m-auto flex flex-col items-center gap-3 text-ink-muted dark:text-cream-muted">
                                     <Eye size={48} className="opacity-20" />
                                     <p className="font-medium">Select an archetype to see the live preview.</p>
                                 </div>
@@ -605,16 +589,16 @@ export default function LatexPage() {
                                 <PdfPreview url={pdfUrl} />
                             </div>
                         ) : compiling ? (
-                            <div className="m-auto flex flex-col items-center gap-4 text-slate-500">
-                                <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                            <div className="m-auto flex flex-col items-center gap-4 text-ink-muted dark:text-cream-muted">
+                                <div className="w-8 h-8 border-4 border-sienna/25 dark:border-sienna-dark/25 border-t-sienna dark:border-t-sienna-dark rounded-full animate-spin" />
                                 <p className="font-medium animate-pulse">Running Tectonic LaTeX Compiler...</p>
                                 <p className="text-xs opacity-70">First run may take a minute to download packages.</p>
                             </div>
                         ) : (
-                            <div className="m-auto flex flex-col items-center gap-3 text-slate-400">
+                            <div className="m-auto flex flex-col items-center gap-3 text-ink-muted dark:text-cream-muted">
                                 <FileCode2 size={48} className="opacity-20" />
                                 <p className="font-medium">No PDF compiled yet.</p>
-                                <p className="text-sm text-slate-500">Inject to Editor, then open this tab to compile.</p>
+                                <p className="text-sm text-ink-faint dark:text-cream-faint">Inject to Editor, then open this tab to compile.</p>
                             </div>
                         )}
                     </div>

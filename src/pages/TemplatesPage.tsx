@@ -4,7 +4,11 @@ import {
     updateCoverLetterTemplate, deleteCoverLetterTemplate,
     CoverLetterTemplate,
 } from '../lib/tauri';
-import { LayoutTemplate, Plus, Trash2, Save, AlertCircle, Check, FileText } from 'lucide-react';
+import { Plus, Trash2, Save, AlertCircle, Check } from 'lucide-react';
+import { PageHeader, Button, Card } from '../components/ui';
+
+const inputCls = "w-full px-3 py-2 bg-paper dark:bg-charcoal-inset border border-paper-border dark:border-charcoal-border rounded text-sm text-ink dark:text-cream placeholder:text-ink-faint dark:placeholder:text-cream-faint focus:outline-none focus:ring-2 focus:ring-sienna/30 focus:border-sienna transition-all";
+const labelCls = "text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink-muted dark:text-cream-muted";
 
 /**
  * Manage cover letter templates: structural guides the generator is conditioned
@@ -75,44 +79,38 @@ export default function TemplatesPage() {
     };
 
     return (
-        <div className="flex flex-col h-full gap-6">
-            <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 flex items-center gap-3">
-                <LayoutTemplate className="text-blue-500" /> Cover Letter Templates
-            </h1>
+        <div className="flex h-full flex-col gap-6">
+            <PageHeader title="Cover Letter Templates" />
 
-            <div className="flex flex-col lg:flex-row gap-6 h-full min-h-0">
+            <div className="flex h-full min-h-0 flex-col gap-6 lg:flex-row">
 
                 {/* Template list */}
-                <div className="flex flex-col w-full lg:w-1/3 min-w-[280px] min-h-0 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                    <div className="p-3 px-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20 flex items-center gap-2 shrink-0">
-                        <FileText size={16} className="text-slate-500" />
-                        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Templates</h2>
-                        <button
-                            onClick={startNew}
-                            className="ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                        >
+                <Card className="flex min-h-0 w-full min-w-[280px] flex-col overflow-hidden lg:w-1/3">
+                    <div className="flex shrink-0 items-center gap-2 border-b border-paper-inset-border bg-paper-inset px-4 py-3 dark:border-charcoal-inset-border dark:bg-charcoal-inset">
+                        <span className={labelCls}>Templates</span>
+                        <Button size="sm" className="ml-auto" onClick={startNew}>
                             <Plus size={13} /> New
-                        </button>
+                        </Button>
                     </div>
-                    <div className="flex-1 overflow-y-auto flex flex-col">
+                    <div className="flex flex-1 flex-col overflow-y-auto">
                         {templates.length === 0 ? (
-                            <p className="text-xs text-slate-400 italic p-4 text-center">No templates yet. Create one to guide the letter's structure.</p>
+                            <p className="p-4 text-center text-xs italic text-ink-muted dark:text-cream-muted">No templates yet. Create one to guide the letter's structure.</p>
                         ) : (
                             templates.map(t => (
                                 <button
                                     key={t.id}
                                     onClick={() => selectTemplate(t)}
-                                    className={`shrink-0 text-left px-4 py-3 border-b border-slate-100 dark:border-slate-700/50 group transition-colors ${
+                                    className={`group shrink-0 border-b border-paper-inset-border px-4 py-3 text-left transition-colors dark:border-charcoal-inset-border ${
                                         selectedId === t.id
-                                        ? 'bg-blue-50 dark:bg-blue-900/20'
-                                        : 'hover:bg-slate-50 dark:hover:bg-slate-700/30'
+                                            ? 'bg-paper-inset dark:bg-charcoal-inset'
+                                            : 'hover:bg-paper-inset/60 dark:hover:bg-charcoal-inset/60'
                                     }`}
                                 >
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate">{t.name}</span>
-                                        <span className="flex items-center gap-1 shrink-0">
+                                        <span className="truncate text-sm font-semibold text-ink dark:text-cream">{t.name}</span>
+                                        <span className="flex shrink-0 items-center gap-1.5">
                                             {t.is_builtin && (
-                                                <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400">
+                                                <span className="rounded-full border border-sienna px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sienna dark:border-sienna-dark dark:text-sienna-dark">
                                                     Built-in
                                                 </span>
                                             )}
@@ -121,8 +119,8 @@ export default function TemplatesPage() {
                                                 onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
                                                 className={`p-1 transition-all ${
                                                     confirmDeleteId === t.id
-                                                    ? 'text-red-500'
-                                                    : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500'
+                                                        ? 'text-[#a1453a] dark:text-[#d97567]'
+                                                        : 'text-ink-faint opacity-0 hover:text-[#a1453a] group-hover:opacity-100 dark:text-cream-faint dark:hover:text-[#d97567]'
                                                 }`}
                                                 title={confirmDeleteId === t.id ? 'Click again to confirm' : 'Delete'}
                                             >
@@ -130,60 +128,57 @@ export default function TemplatesPage() {
                                             </span>
                                         </span>
                                     </div>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">
+                                    <p className="mt-0.5 line-clamp-2 text-xs text-ink-muted dark:text-cream-muted">
                                         {t.content}
                                     </p>
                                 </button>
                             ))
                         )}
                     </div>
-                </div>
+                </Card>
 
                 {/* Editor */}
-                <div className="flex flex-col gap-4 w-full lg:w-2/3 min-h-0">
+                <div className="flex min-h-0 w-full flex-col gap-4 lg:w-2/3">
                     {error && (
-                        <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-xl flex gap-3 border border-red-200 dark:border-red-800">
+                        <div className="flex gap-3 rounded border border-[#a1453a]/30 bg-[#a1453a]/5 p-4 text-[#a1453a] dark:border-[#d97567]/30 dark:bg-[#d97567]/5 dark:text-[#d97567]">
                             <AlertCircle className="shrink-0" />
                             <p className="text-sm font-medium">{error}</p>
                         </div>
                     )}
 
-                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col flex-1 min-h-0 p-5 gap-4">
+                    <Card className="flex min-h-0 flex-1 flex-col gap-4 p-5">
                         <div>
-                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Template Name</label>
+                            <label className={labelCls}>Template name</label>
                             <input
                                 type="text"
-                                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                className={`mt-1.5 ${inputCls}`}
                                 placeholder="e.g. Startup — short and direct"
                                 value={name}
                                 onChange={e => setName(e.target.value)}
                             />
                         </div>
 
-                        <div className="flex flex-col flex-1 min-h-0">
-                            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Template Content</label>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                        <div className="flex min-h-0 flex-1 flex-col">
+                            <label className={labelCls}>Template content</label>
+                            <p className="mb-2 mt-1.5 text-xs text-ink-muted dark:text-cream-muted">
                                 Describe the letter's structure section by section: paragraph order, what each covers, length, and tone.
                                 Use [bracketed placeholders] for things the letter should fill in. The generator follows this structure
                                 but never invents experience to satisfy it.
                             </p>
                             <textarea
-                                className="w-full flex-1 min-h-[260px] p-3 text-sm font-mono bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
+                                className={`${inputCls} min-h-[260px] flex-1 resize-none font-mono`}
                                 placeholder={"Structure: ...\n\nDear [Hiring Manager],\n\nParagraph 1: ...\n\nSincerely,\n[Name]\n\nTone: ... Length: ..."}
                                 value={content}
                                 onChange={e => setContent(e.target.value)}
                             />
                         </div>
 
-                        <button
-                            onClick={handleSave}
-                            className="self-end flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md"
-                        >
+                        <Button onClick={handleSave} variant="accent" className="self-end">
                             {saved
                                 ? <><Check size={16} /> Saved</>
-                                : <><Save size={16} /> {selectedId === null ? 'Create Template' : 'Save Changes'}</>}
-                        </button>
-                    </div>
+                                : <><Save size={16} /> {selectedId === null ? 'Create template' : 'Save changes'}</>}
+                        </Button>
+                    </Card>
                 </div>
 
             </div>

@@ -267,6 +267,7 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::OptionalExtension;
 
     /// Helper: register sqlite-vec and create an in-memory connection.
     fn test_conn() -> Connection {
@@ -776,5 +777,56 @@ mod tests {
         for bad in ["Applied", "pending", "", "withdrawn"] {
             assert!(models::validate_status(bad).is_err(), "'{}' should be invalid", bad);
         }
+    }
+
+    // ─── App settings (generic key/value) ───
+
+    #[test]
+    fn test_app_setting_get_absent_and_round_trip() {
+        let conn = test_conn();
+        run_migrations(&conn).unwrap();
+
+        // Absent key -> None (mirrors get_app_setting's use of .optional()).
+        let missing: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                ["onboarding_complete"],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(missing, None);
+
+        // Set then get -> round-trips.
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?1, ?2)",
+            rusqlite::params!["onboarding_complete", "1"],
+        )
+        .unwrap();
+        let value: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                ["onboarding_complete"],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(value, Some("1".to_string()));
+
+        // Re-set (INSERT OR REPLACE) overwrites rather than erroring.
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?1, ?2)",
+            rusqlite::params!["onboarding_complete", "0"],
+        )
+        .unwrap();
+        let updated: Option<String> = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                ["onboarding_complete"],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(updated, Some("0".to_string()));
     }
 }

@@ -100,6 +100,9 @@ pub fn run() {
             db::commands::list_applications,
             db::commands::update_application,
             db::commands::delete_application,
+            // App settings (generic key/value)
+            db::commands::get_app_setting,
+            db::commands::set_app_setting,
             // RAG / Embeddings
             rag::commands::embed_bullet,
             rag::commands::embed_all_bullets,
