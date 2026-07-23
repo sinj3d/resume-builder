@@ -216,7 +216,7 @@ fn assemble_resume_data(
         let mut exp_stmt = conn
             .prepare(
                 "SELECT e.id, e.title, e.org, e.start_date, e.end_date, e.category,
-                        ed.experience_id, ed.degree, ed.gpa, ed.coursework, ed.honors
+                        ed.experience_id, ed.degree, ed.gpa, ed.coursework, ed.honors, e.link
                  FROM experiences e
                  JOIN archetype_experiences ae ON e.id = ae.experience_id
                  LEFT JOIN education_details ed ON ed.experience_id = e.id
@@ -232,6 +232,7 @@ fn assemble_resume_data(
             start: Option<String>,
             end: Option<String>,
             category: String,
+            link: Option<String>,
             education: Option<crate::db::models::EducationDetails>,
         }
 
@@ -245,6 +246,7 @@ fn assemble_resume_data(
                     start: row.get(3)?,
                     end: row.get(4)?,
                     category: row.get(5)?,
+                    link: row.get(11)?,
                     education: edu_id.map(|experience_id| crate::db::models::EducationDetails {
                         experience_id,
                         degree: row.get(7).ok().flatten(),
@@ -300,6 +302,7 @@ fn assemble_resume_data(
                     end: exp.end,
                     bullets,
                     education,
+                    link: exp.link,
                 },
             ));
         }

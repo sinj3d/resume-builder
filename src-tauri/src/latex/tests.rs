@@ -63,6 +63,7 @@ mod tests {
                         end: Some("Present".to_string()),
                         bullets: vec!["Cut costs by 50% using snake_case tools".to_string()],
                         education: None,
+                        link: None,
                     }],
                 },
                 template::SectionGroup {
@@ -80,6 +81,7 @@ mod tests {
                             coursework: Some("Algorithms, OS".to_string()),
                             honors: Some("Dean's List".to_string()),
                         }),
+                        link: None,
                     }],
                 },
             ],
@@ -133,6 +135,7 @@ mod tests {
                             end: None,
                             bullets: vec!["Did the thing".to_string()],
                             education: None,
+                            link: None,
                         }],
                     }],
                 );

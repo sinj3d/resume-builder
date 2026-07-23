@@ -247,6 +247,7 @@ export interface ResumeEntryData {
   end: string | null;
   bullets: string[];
   education: EducationDetails | null;
+  link: string | null;
 }
 
 export interface SectionGroupData {

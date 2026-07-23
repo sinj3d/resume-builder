@@ -39,6 +39,7 @@ export const SAMPLE_RESUME: ResumeData = {
                     coursework: 'Algorithms, Operating Systems',
                     honors: "Dean's List",
                 },
+                link: null,
             }],
         },
         {
@@ -53,6 +54,7 @@ export const SAMPLE_RESUME: ResumeData = {
                     'Reduced API latency by 40% through caching',
                 ],
                 education: null,
+                link: null,
             }],
         },
         {
@@ -64,6 +66,7 @@ export const SAMPLE_RESUME: ResumeData = {
                 end: null,
                 bullets: ['Built a local-first resume generator with Tauri and Rust'],
                 education: null,
+                link: 'https://github.com/sinj3d/resume-builder',
             }],
         },
     ],
@@ -95,6 +98,23 @@ function linkTarget(core: string): string | null {
         }
     }
     return null;
+}
+
+// An org that means "no organization" — empty, or a placeholder like
+// "none"/"n/a" that resume imports write. Mirrors `is_blank_org` in template.rs.
+function isBlankOrg(org: string | null | undefined): boolean {
+    const o = (org || '').trim().toLowerCase();
+    return !o || o === 'none' || o === 'n/a' || o === 'na';
+}
+
+// Normalize an experience's link into an href target, or null if unusable.
+// Mirrors `sanitize_href` in template.rs.
+function hrefTarget(link: string | null | undefined): string | null {
+    const l = (link || '').trim();
+    if (!l || /[{}\\]/.test(l)) return null;
+    const lower = l.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('mailto:')) return l;
+    return `https://${l}`;
 }
 
 function linkify(text: string): ReactNode[] {
@@ -236,14 +256,21 @@ export default function HtmlResume({ data, layout }: { data: ResumeData; layout:
                     <div style={sectionHeadingStyle}>{group.heading}</div>
                     {group.entries.map((entry, i) => {
                         const edu = entry.education;
-                        const headline = edu
-                            ? (entry.org || entry.title)
-                            : (entry.org ? `${entry.title} – ${entry.org}` : entry.title);
+                        const org = isBlankOrg(entry.org) ? null : entry.org;
+                        const target = hrefTarget(entry.link);
+                        // Make the title clickable when the entry has a link, matching
+                        // the compiled PDF's `\href` (and `hidelinks`, so it reads plain).
+                        const asLink = (text: ReactNode): ReactNode => target
+                            ? <a href={target} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{text}</a>
+                            : text;
+                        const headline: ReactNode = edu
+                            ? asLink(org || entry.title)
+                            : (org ? <>{asLink(entry.title)} – {org}</> : asLink(entry.title));
                         const degreeLine: string[] = [];
                         if (edu) {
                             const degree = (edu.degree || '').trim();
                             if (degree) degreeLine.push(degree);
-                            else if (entry.org) degreeLine.push(entry.title);
+                            else if (org) degreeLine.push(entry.title);
                             const gpa = (edu.gpa || '').trim();
                             if (gpa) degreeLine.push(`GPA: ${gpa}`);
                         }

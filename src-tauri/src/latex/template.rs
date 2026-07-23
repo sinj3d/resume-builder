@@ -15,6 +15,9 @@ pub struct ResumeEntry {
     pub end: Option<String>,
     pub bullets: Vec<String>,
     pub education: Option<EducationDetails>,
+    /// Optional URL for the experience; renders the title as a clickable link.
+    #[serde(default)]
+    pub link: Option<String>,
 }
 
 /// A resume section ready to render: heading plus its entries in display
@@ -179,20 +182,60 @@ fn format_date_range(start: &Option<String>, end: &Option<String>) -> String {
     }
 }
 
+/// True for an org that means "no organization": empty, or a placeholder like
+/// "none"/"n/a" that resume imports sometimes write. Such entries headline the
+/// title alone rather than rendering "Title -- None".
+fn is_blank_org(org: &str) -> bool {
+    let o = org.trim().to_ascii_lowercase();
+    o.is_empty() || o == "none" || o == "n/a" || o == "na"
+}
+
+/// Normalize a user-entered link into a safe `\href` target, or `None` if it
+/// can't be used. Rejects braces/backslashes (they'd break the `\href` argument)
+/// and adds an `https://` scheme when none is present.
+fn sanitize_href(link: &str) -> Option<String> {
+    let l = link.trim();
+    if l.is_empty() || l.contains(['{', '}', '\\']) {
+        return None;
+    }
+    let lower = l.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:") {
+        Some(l.to_string())
+    } else {
+        Some(format!("https://{}", l))
+    }
+}
+
+/// Wrap already-escaped `text` in an `\href` to the entry's link when it has a
+/// usable one, so an experience's title is clickable on the resume. Requires
+/// `hyperref` in the preamble (see [`super::layout::generate_layout_block`]).
+fn maybe_href(text: String, link: &Option<String>) -> String {
+    match link.as_deref().and_then(sanitize_href) {
+        Some(url) => format!("\\href{{{}}}{{{}}}", url, text),
+        None => text,
+    }
+}
+
 fn render_entry(output: &mut String, entry: &ResumeEntry) {
+    // A real (non-placeholder) org, already escaped; `None` when absent so we
+    // don't headline "Title -- None".
+    let org_tex: Option<String> = match entry.org.as_deref() {
+        Some(o) if !is_blank_org(o) => Some(escape_latex(o)),
+        _ => None,
+    };
+    let title_tex = maybe_href(escape_latex(&entry.title), &entry.link);
+
     // Education entries headline the institution (org); everything else
     // headlines "Title -- Org".
     let header = if entry.education.is_some() {
-        match &entry.org {
-            Some(o) if !o.is_empty() => escape_latex(o),
-            _ => escape_latex(&entry.title),
+        match org_tex.clone() {
+            Some(o) => maybe_href(o, &entry.link),
+            None => title_tex.clone(),
         }
     } else {
-        match &entry.org {
-            Some(o) if !o.is_empty() => {
-                format!("{} -- {}", escape_latex(&entry.title), escape_latex(o))
-            }
-            _ => escape_latex(&entry.title),
+        match &org_tex {
+            Some(o) => format!("{} -- {}", title_tex, o),
+            None => title_tex.clone(),
         }
     };
 
@@ -212,7 +255,7 @@ fn render_entry(output: &mut String, entry: &ResumeEntry) {
         let mut degree_line = Vec::new();
         if !degree.is_empty() {
             degree_line.push(escape_latex(&degree));
-        } else if entry.org.as_deref().map_or(false, |o| !o.is_empty()) {
+        } else if org_tex.is_some() {
             // Institution took the headline; fall back to the title as the degree line.
             degree_line.push(escape_latex(&entry.title));
         }
@@ -322,6 +365,7 @@ mod tests {
             end: Some("Present".to_string()),
             bullets: bullets.into_iter().map(|s| s.to_string()).collect(),
             education: None,
+            link: None,
         }
     }
 
@@ -431,6 +475,7 @@ mod tests {
                 coursework: Some("Algorithms, Operating Systems".to_string()),
                 honors: Some("Dean's List".to_string()),
             }),
+            link: None,
         };
         let out = inject_sections_by_category(
             "% {INJECT_SECTIONS}",
@@ -458,6 +503,7 @@ mod tests {
                 coursework: None,
                 honors: None,
             }),
+            link: None,
         };
         let out = inject_sections_by_category(
             "% {INJECT_SECTIONS}",
@@ -468,6 +514,47 @@ mod tests {
         assert!(!out.contains("GPA:"));
         assert!(!out.contains("Relevant Coursework"));
         assert!(!out.contains("Honors:"));
+    }
+
+    #[test]
+    fn test_blank_org_is_not_headlined() {
+        // A placeholder org (imports write "None"/"N/A" when there's no org)
+        // must not render as "Title -- None"; the title headlines alone.
+        for org in ["None", "none", "N/A", "  ", ""] {
+            let out = inject_sections_by_category(
+                "% {INJECT_SECTIONS}",
+                &[SectionGroup {
+                    heading: "Projects".to_string(),
+                    entries: vec![entry("My Project", Some(org), vec!["Did a thing"])],
+                }],
+            );
+            assert!(out.contains("\\subsection*{My Project"), "org={org:?}: {out}");
+            assert!(!out.contains("My Project -- "), "org={org:?} kept a dash: {out}");
+            assert!(!out.to_lowercase().contains("none"), "org={org:?} leaked: {out}");
+        }
+    }
+
+    #[test]
+    fn test_entry_link_wraps_title_in_href() {
+        let mut e = entry("Cool Repo", None, vec!["Built it"]);
+        e.link = Some("https://github.com/me/cool".to_string());
+        let out = inject_sections_by_category(
+            "% {INJECT_SECTIONS}",
+            &[SectionGroup { heading: "Projects".to_string(), entries: vec![e] }],
+        );
+        assert!(out.contains("\\href{https://github.com/me/cool}{Cool Repo}"), "{out}");
+
+        // A scheme-less link gets https://; a real org still follows the link.
+        let mut e2 = entry("Portfolio", Some("Acme"), vec![]);
+        e2.link = Some("me.example.com".to_string());
+        let out2 = inject_sections_by_category(
+            "% {INJECT_SECTIONS}",
+            &[SectionGroup { heading: "Projects".to_string(), entries: vec![e2] }],
+        );
+        assert!(
+            out2.contains("\\href{https://me.example.com}{Portfolio} -- Acme"),
+            "{out2}"
+        );
     }
 
     #[test]

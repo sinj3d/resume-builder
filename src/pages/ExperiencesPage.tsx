@@ -35,6 +35,14 @@ const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const isFreeformDate = (v: string | null | undefined) =>
     !!v && v.toLowerCase() !== 'present' && !MONTH_RE.test(v);
 
+/// An org that means "no organization" — empty, or a placeholder like "none"/
+/// "n/a" that resume imports write. Mirrors `is_blank_org` in template.rs;
+/// such values are treated as no org (not shown, not required).
+const isBlankOrg = (org: string | null | undefined) => {
+    const o = (org || '').trim().toLowerCase();
+    return !o || o === 'none' || o === 'n/a' || o === 'na';
+};
+
 export default function ExperiencesPage() {
     const [experiences, setExperiences] = useState<Experience[]>([]);
     const [expandedExpId, setExpandedExpId] = useState<number | null>(null);
@@ -129,7 +137,9 @@ export default function ExperiencesPage() {
         const isPresent = (exp.end_date || '').toLowerCase() === 'present';
         setExpForm({
             title: exp.title,
-            org: exp.org || '',
+            // Drop placeholder "None"/"N/A" orgs so the field starts blank and
+            // saving persists an empty org rather than re-storing the placeholder.
+            org: isBlankOrg(exp.org) ? '' : (exp.org || ''),
             start_date: exp.start_date || '',
             end_date: isPresent ? '' : (exp.end_date || ''),
             category: exp.category,
@@ -333,12 +343,13 @@ export default function ExperiencesPage() {
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className={labelCls}>Organization / company</label>
+                                <label className={labelCls}>
+                                    Organization / company <span className="text-[10px] font-normal normal-case tracking-normal text-ink-faint dark:text-cream-faint">(optional)</span>
+                                </label>
                                 <input className={inputCls}
                                     placeholder="e.g. Acme Corp"
                                     value={expForm.org}
                                     onChange={e => setExpForm({ ...expForm, org: e.target.value })}
-                                    required
                                 />
                             </div>
 
@@ -514,7 +525,7 @@ export default function ExperiencesPage() {
                                 >
                                     <div>
                                         <div className="font-serif text-xl font-semibold text-ink dark:text-cream">
-                                            {exp.title} <span className="font-normal italic text-ink-muted dark:text-cream-muted">at {exp.org}</span>
+                                            {exp.title}{!isBlankOrg(exp.org) && <span className="font-normal italic text-ink-muted dark:text-cream-muted"> at {exp.org}</span>}
                                         </div>
                                         <div className="mt-[7px] flex items-center gap-3.5">
                                             <CategoryLabel>{exp.category}</CategoryLabel>
