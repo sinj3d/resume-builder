@@ -25,6 +25,16 @@ const splitBulletLines = (text: string): string[] =>
 const inputCls = "w-full px-3 py-2 bg-paper dark:bg-charcoal-inset border border-paper-border dark:border-charcoal-border rounded text-sm text-ink dark:text-cream placeholder:text-ink-faint dark:placeholder:text-cream-faint focus:outline-none focus:ring-2 focus:ring-sienna/30 focus:border-sienna transition-all";
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink-muted dark:text-cream-muted";
 
+/// The only shape an `<input type="month">` can display/round-trip.
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+/// A stored date the month picker can't represent — e.g. an LLM-imported
+/// free-text range like "September 2022 – July 2025". Editing one of these in a
+/// month picker silently blanks it (the browser rejects the value), so the edit
+/// destroys the original. Detect it and fall back to a plain text field that
+/// shows and preserves the value. "Present" is handled separately (the checkbox).
+const isFreeformDate = (v: string | null | undefined) =>
+    !!v && v.toLowerCase() !== 'present' && !MONTH_RE.test(v);
+
 export default function ExperiencesPage() {
     const [experiences, setExperiences] = useState<Experience[]>([]);
     const [expandedExpId, setExpandedExpId] = useState<number | null>(null);
@@ -40,6 +50,9 @@ export default function ExperiencesPage() {
     const [editingExp, setEditingExp] = useState<Experience | null>(null);
     const [expForm, setExpForm] = useState({ title: '', org: '', start_date: '', end_date: '', category: '', link: '' });
     const [isCurrentJob, setIsCurrentJob] = useState(false);
+    // When editing an entry whose stored dates aren't `YYYY-MM` (e.g. imported
+    // free-text ranges), render the date fields as text so they don't blank out.
+    const [freeformDates, setFreeformDates] = useState(false);
     const [customCategory, setCustomCategory] = useState('');
     const [eduForm, setEduForm] = useState(EMPTY_EDU_FORM);
     const [bulletsText, setBulletsText] = useState('');
@@ -123,6 +136,9 @@ export default function ExperiencesPage() {
             link: exp.link || '',
         });
         setIsCurrentJob(isPresent);
+        // Legacy/imported entries can store dates as free text the month picker
+        // can't hold; show text fields for those so editing preserves them.
+        setFreeformDates(isFreeformDate(exp.start_date) || (!isPresent && isFreeformDate(exp.end_date)));
         setCustomCategory('');
         setEduForm(EMPTY_EDU_FORM);
         if (isEducationCategory(exp.category)) {
@@ -284,7 +300,7 @@ export default function ExperiencesPage() {
                 subtitle={`Your master record — ${experiences.length} ${experiences.length === 1 ? 'entry' : 'entries'}, ${totalBullets} bullet points`}
                 action={
                     view === 'list' ? (
-                        <Button onClick={() => { resetForm(); setView('create'); }}>Add an entry</Button>
+                        <Button onClick={() => { resetForm(); setFreeformDates(false); setView('create'); }}>Add an entry</Button>
                     ) : (
                         <Button variant="outline" onClick={() => { resetForm(); setView('list'); }}>Back to list</Button>
                     )
@@ -329,7 +345,8 @@ export default function ExperiencesPage() {
                             <div className="flex flex-col gap-1.5">
                                 <label className={labelCls}>Start date</label>
                                 <input
-                                    type="month"
+                                    type={freeformDates ? 'text' : 'month'}
+                                    placeholder={freeformDates ? 'e.g. Sep 2022 – Jul 2025' : undefined}
                                     className={inputCls}
                                     value={expForm.start_date}
                                     onChange={e => setExpForm({ ...expForm, start_date: e.target.value })}
@@ -351,14 +368,21 @@ export default function ExperiencesPage() {
                                     </label>
                                 </div>
                                 <input
-                                    type="month"
+                                    type={freeformDates ? 'text' : 'month'}
+                                    placeholder={freeformDates && !isCurrentJob ? 'e.g. Jul 2025 (optional)' : undefined}
                                     disabled={isCurrentJob}
                                     className={`${inputCls} disabled:cursor-not-allowed disabled:opacity-50`}
                                     value={isCurrentJob ? '' : expForm.end_date}
                                     onChange={e => setExpForm({ ...expForm, end_date: e.target.value })}
-                                    required={!isCurrentJob}
+                                    required={!isCurrentJob && !freeformDates}
                                 />
                             </div>
+
+                            {freeformDates && (
+                                <p className="-mt-3 text-[11px] leading-snug text-ink-faint dark:text-cream-faint md:col-span-2">
+                                    These dates were imported as free-form text, so they're shown as-is to avoid losing them. Edit directly, or clear a field and re-open to use the month picker.
+                                </p>
+                            )}
 
                             <div className="flex flex-col gap-1.5 md:col-span-2">
                                 <label className={labelCls}>Category</label>
