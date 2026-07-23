@@ -381,8 +381,10 @@ pub async fn extract_resume_pdf(
     .await
     .map_err(|e| format!("Parser task failed to run: {}", e))??;
 
-    // 4. Recover and validate clean JSON from the model output.
+    // 4. Recover clean JSON, normalize categories (section-heading override +
+    //    canonicalization, dropping the transient `section` field), then validate.
     let json = crate::llm::parse::extract_json_object(&raw)?;
+    let json = crate::llm::parse::postprocess_experiences(&json)?;
     crate::llm::parse::validate_experiences(&json)?;
 
     Ok(json)
