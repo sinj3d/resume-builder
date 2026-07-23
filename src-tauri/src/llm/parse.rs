@@ -55,29 +55,12 @@ Examples of choosing the category from the section heading:
 Resume text:
 "#;
 
-/// GBNF grammar that constrains the parser model's output to exactly the schema
-/// in [`PARSE_INSTRUCTIONS`]: a JSON object whose `experiences` each carry the
-/// fields in order, with `category` pinned to the six allowed values. This makes
-/// the model physically unable to emit malformed JSON or an off-vocabulary
-/// category. Applied best-effort in [`crate::llm::generate_local_parse`]; if it
-/// fails to compile, generation falls back to unconstrained decoding.
-///
-/// The `category` alternatives here (Work, Project, …) are the model-facing
-/// vocabulary; [`postprocess_experiences`] maps them to the canonical stored
-/// values, and the `section` heading can still override the guess.
-// Only consumed by the local-LLM parse path; unused when that feature is off.
-#[cfg_attr(not(feature = "local-llm"), allow(dead_code))]
-pub(crate) const PARSE_GRAMMAR: &str = r#"
-root ::= "{" ws "\"experiences\"" ws ":" ws "[" ws entries? ws "]" ws "}" ws
-entries ::= entry (ws "," ws entry)*
-entry ::= "{" ws "\"title\"" ws ":" ws string ws "," ws "\"org\"" ws ":" ws string ws "," ws "\"start_date\"" ws ":" ws string ws "," ws "\"end_date\"" ws ":" ws string ws "," ws "\"section\"" ws ":" ws string ws "," ws "\"category\"" ws ":" ws category ws "," ws "\"bullets\"" ws ":" ws "[" ws strings? ws "]" ws "}"
-strings ::= string (ws "," ws string)*
-category ::= "\"Work\"" | "\"Project\"" | "\"Education\"" | "\"Competition\"" | "\"Leadership\"" | "\"Volunteer\""
-string ::= "\"" char* "\""
-char ::= [^"\\\x7F\x00-\x1F] | "\\" (["\\bfnrt/] | "u" hex hex hex hex)
-hex ::= [0-9a-fA-F]
-ws ::= [ \t\n]*
-"#;
+// NOTE: an earlier version constrained decoding with a GBNF grammar (pinning the
+// JSON schema and the six-value category enum). It was removed because it crashed
+// the parser at runtime — grammar-constrained decoding can hard-abort inside
+// llama.cpp (a native abort/exception that a Rust `Result` can't catch). Category
+// correctness is instead guaranteed downstream by `postprocess_experiences`
+// (section-heading override + canonicalization), which touches no decoding.
 
 /// Build a ChatML-formatted prompt for a Qwen2.5-style instruct model
 /// (the auto-downloaded parser model). ChatML is the template that model expects.
@@ -362,17 +345,6 @@ mod tests {
         let prompt = build_parse_prompt("resume");
         assert!(prompt.contains("\"section\""), "schema must ask for a section");
         assert!(prompt.contains("Examples of choosing the category"), "few-shot examples missing");
-    }
-
-    #[test]
-    fn test_grammar_pins_category_enum_and_root() {
-        // The grammar must be in sync with the model-facing vocabulary and expose
-        // a `root` rule (LlamaSampler::grammar requires the root name to appear).
-        for cat in ["Work", "Project", "Education", "Competition", "Leadership", "Volunteer"] {
-            assert!(PARSE_GRAMMAR.contains(cat), "grammar missing category {cat}");
-        }
-        assert!(PARSE_GRAMMAR.contains("root ::="));
-        assert!(PARSE_GRAMMAR.contains("\\\"section\\\""));
     }
 
     #[test]

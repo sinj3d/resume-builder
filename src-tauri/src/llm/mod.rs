@@ -114,7 +114,6 @@ fn run_local_generation(
     input: LocalInput,
     gguf_path: &str,
     max_tokens: i32,
-    grammar: Option<&str>,
     mut on_token: impl FnMut(&str),
 ) -> Result<String, String> {
     use llama_cpp_2::llama_backend::LlamaBackend;
@@ -200,20 +199,11 @@ fn run_local_generation(
     ctx.decode(&mut batch)
         .map_err(|e| format!("Initial decode failed: {}", e))?;
 
-    // Set up sampler: greedy decoding for deterministic output, optionally
-    // preceded by a GBNF grammar constraint so structured output stays on-schema.
-    // Grammar compilation is best-effort: if it fails we log and fall back to
-    // unconstrained decoding rather than aborting the whole generation.
-    let mut samplers: Vec<LlamaSampler> = Vec::new();
-    if let Some(g) = grammar {
-        match LlamaSampler::grammar(&model, g, "root") {
-            Ok(gs) => samplers.push(gs),
-            Err(e) => eprintln!("Grammar failed to compile; continuing unconstrained: {e:?}"),
-        }
-    }
-    samplers.push(LlamaSampler::dist(1234));
-    samplers.push(LlamaSampler::greedy());
-    let mut sampler = LlamaSampler::chain_simple(samplers);
+    // Set up sampler (greedy decoding for deterministic output)
+    let mut sampler = LlamaSampler::chain_simple([
+        LlamaSampler::dist(1234),
+        LlamaSampler::greedy(),
+    ]);
 
     // Generate tokens
     let mut output = String::new();
@@ -256,20 +246,14 @@ pub fn generate_local_chat(
     gguf_path: &str,
     on_token: impl FnMut(&str),
 ) -> Result<String, String> {
-    run_local_generation(LocalInput::Chat { system, user }, gguf_path, 1024, None, on_token)
+    run_local_generation(LocalInput::Chat { system, user }, gguf_path, 1024, on_token)
 }
 
 /// Parse a resume with the specialized, auto-downloaded parser model.
 /// Uses a larger output budget and ChatML (no BOS) since the model is a chat model.
 #[cfg(feature = "local-llm")]
 pub fn generate_local_parse(prompt: &str, gguf_path: &str) -> Result<String, String> {
-    run_local_generation(
-        LocalInput::Raw { prompt, add_bos: false },
-        gguf_path,
-        2048,
-        Some(crate::llm::parse::PARSE_GRAMMAR),
-        |_| {},
-    )
+    run_local_generation(LocalInput::Raw { prompt, add_bos: false }, gguf_path, 2048, |_| {})
 }
 
 /// Stub for when the local-llm feature is not enabled.
