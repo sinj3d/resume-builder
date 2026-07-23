@@ -19,6 +19,18 @@ const PARSER_MODEL_URL: &str =
     "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf";
 const PARSER_MODEL_FILENAME: &str = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
 
+/// The fine-tuned cover-letter model produced by the `training/` pipeline,
+/// hosted on HuggingFace. Q4_K_M GGUF (~1.8 GB for the 3B base).
+///
+/// Uploaded to HuggingFace with:
+///   huggingface-cli upload sinj3d/resume-builder-coverletter \
+///       out/coverletter-Q4_K_M.gguf coverletter-qwen2.5-3b-Q4_K_M.gguf
+/// which publishes it at exactly the `resolve/main/…gguf` link below (the
+/// `/resolve/main/` form is the direct download; a `/blob/` link serves HTML).
+const COVERLETTER_MODEL_URL: &str =
+    "https://huggingface.co/sinj3d/resume-builder-coverletter/resolve/main/coverletter-qwen2.5-3b-Q4_K_M.gguf";
+const COVERLETTER_MODEL_FILENAME: &str = "coverletter-qwen2.5-3b-Q4_K_M.gguf";
+
 /// Resolve the on-disk path for the parser model (whether or not it exists yet).
 pub fn parser_model_path(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
@@ -67,6 +79,79 @@ pub async fn ensure_parser_model(app: &AppHandle) -> Result<PathBuf, String> {
         let chunk = chunk.map_err(|e| format!("Error while downloading model: {}", e))?;
         file.write_all(&chunk)
             .map_err(|e| format!("Failed to write model chunk: {}", e))?;
+    }
+    file.flush().map_err(|e| format!("Failed to flush model file: {}", e))?;
+    drop(file);
+
+    fs::rename(&tmp_path, &model_path)
+        .map_err(|e| format!("Failed to finalize downloaded model: {}", e))?;
+
+    Ok(model_path)
+}
+
+/// Resolve the on-disk path for the fine-tuned cover-letter model (whether or not
+/// it exists yet). Lives alongside the parser model in the app-data `models/` dir.
+pub fn coverletter_model_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+    Ok(app_data_dir.join("models").join(COVERLETTER_MODEL_FILENAME))
+}
+
+/// Ensure the fine-tuned cover-letter model is present locally, downloading it on
+/// first use. Returns the path to the ready-to-load `.gguf` file (unlike the parser
+/// model this is a user-initiated, opt-in download, never triggered automatically).
+///
+/// `on_progress(downloaded, total)` is invoked as bytes arrive so callers can render
+/// a progress bar; `total` is `None` when the server sends no `Content-Length`.
+/// Streams to a temp `.part` sibling and renames on success, so an interrupted
+/// download never leaves a corrupt model behind.
+pub async fn ensure_coverletter_model(
+    app: &AppHandle,
+    mut on_progress: impl FnMut(u64, Option<u64>),
+) -> Result<PathBuf, String> {
+    let model_path = coverletter_model_path(app)?;
+    if model_path.exists() {
+        return Ok(model_path);
+    }
+
+    let model_dir = model_path
+        .parent()
+        .ok_or_else(|| "Invalid model path".to_string())?;
+    fs::create_dir_all(model_dir).map_err(|e| format!("Failed to create model dir: {}", e))?;
+
+    let tmp_path = model_dir.join(format!("{}.part", COVERLETTER_MODEL_FILENAME));
+
+    let client = Client::new();
+    let res = client
+        .get(COVERLETTER_MODEL_URL)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to start model download: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!(
+            "Failed to download cover-letter model: HTTP {}. \
+             Check that COVERLETTER_MODEL_URL points at a valid GGUF file.",
+            res.status()
+        ));
+    }
+
+    let total = res.content_length();
+    let mut downloaded: u64 = 0;
+    on_progress(downloaded, total);
+
+    let mut file =
+        fs::File::create(&tmp_path).map_err(|e| format!("Failed to create model file: {}", e))?;
+
+    let mut stream = res.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Error while downloading model: {}", e))?;
+        file.write_all(&chunk)
+            .map_err(|e| format!("Failed to write model chunk: {}", e))?;
+        downloaded += chunk.len() as u64;
+        on_progress(downloaded, total);
     }
     file.flush().map_err(|e| format!("Failed to flush model file: {}", e))?;
     drop(file);

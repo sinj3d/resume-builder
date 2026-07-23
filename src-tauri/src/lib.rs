@@ -113,6 +113,7 @@ pub fn run() {
             llm::commands::update_llm_settings,
             llm::commands::extract_resume_pdf,
             llm::commands::check_or_download_parser_model,
+            llm::commands::download_coverletter_model,
             // LaTeX
             latex::commands::check_or_download_tectonic,
             latex::commands::compile_tex,

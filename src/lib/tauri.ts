@@ -195,6 +195,21 @@ export const extractResumePdf = (pdf_path: string) =>
 export const checkOrDownloadParserModel = () =>
   invoke<void>('check_or_download_parser_model');
 
+/** Progress events streamed while the fine-tuned cover-letter model downloads.
+ *  The awaited promise still resolves to the local `.gguf` path; these only carry
+ *  progress. `total` is null when the server sends no Content-Length. */
+export type DownloadEvent =
+  | { event: 'progress'; data: { downloaded: number; total: number | null } };
+
+// Download the fine-tuned cover-letter GGUF into app-data (no-op if already present)
+// and resolve to its local path, ready to store as `gguf_path`. `onEvent` streams
+// download progress.
+export const downloadCoverletterModel = (onEvent: (e: DownloadEvent) => void) => {
+  const channel = new Channel<DownloadEvent>();
+  channel.onmessage = onEvent;
+  return invoke<string>('download_coverletter_model', { onEvent: channel });
+};
+
 // LaTeX / Layout Commands
 
 /// Mirrors `LayoutConfig` in src-tauri/src/latex/layout.rs (snake_case fields

@@ -94,8 +94,15 @@ against shared golden files (`cargo test golden` /
 silently degrades the model. Local generation feeds the GGUF's own embedded
 chat template, matching how the model was trained.
 
-Point **Settings → Local (GGUF)** at any tuned model file to use it; any other
-Qwen-style instruct GGUF also works untuned.
+In **Settings → Local (GGUF)** click **Download the tuned cover-letter model**
+to fetch the prebuilt GGUF into the app-data directory (or point the path at any
+tuned model file yourself); any other Qwen-style instruct GGUF also works untuned.
+
+**Built with Qwen.** The fine-tuned cover-letter model is a derivative of
+Qwen2.5-3B-Instruct, distributed under the
+[Qwen Research License](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct/blob/main/LICENSE)
+(non-commercial). Prebuilt GGUF:
+[sinj3d/resume-builder-coverletter](https://huggingface.co/sinj3d/resume-builder-coverletter).
 
 ## Download & install
 

@@ -289,6 +289,61 @@ pub async fn check_or_download_parser_model(app: AppHandle) -> Result<(), String
     crate::llm::model::ensure_parser_model(&app).await.map(|_| ())
 }
 
+/// Progress events streamed over an IPC channel while the fine-tuned cover-letter
+/// model downloads. The awaited command promise still resolves to the final local
+/// path; the channel only carries progress. `total` is null when the server sends
+/// no `Content-Length`, in which case the UI shows an indeterminate state.
+#[derive(Clone, Serialize)]
+#[serde(tag = "event", content = "data", rename_all = "camelCase")]
+pub enum DownloadEvent {
+    #[serde(rename_all = "camelCase")]
+    Progress { downloaded: u64, total: Option<u64> },
+}
+
+/// Download the fine-tuned cover-letter model (or return its path if it's already
+/// present), streaming progress over `on_event`. The resolved path is ready to
+/// store as the `gguf_path` setting — the frontend saves it after the download so
+/// local mode works immediately.
+#[tauri::command]
+pub async fn download_coverletter_model(
+    app: AppHandle,
+    on_event: tauri::ipc::Channel<DownloadEvent>,
+) -> Result<String, String> {
+    // Throttle emission so a 1.8 GB download doesn't fire an event per TCP chunk:
+    // send on each whole-percent change when the size is known, else every ~8 MB.
+    let mut last_pct: i64 = -1;
+    let mut last_bytes: u64 = 0;
+    let path = crate::llm::model::ensure_coverletter_model(&app, |downloaded, total| {
+        let should_emit = match total {
+            Some(t) if t > 0 => {
+                let pct = ((downloaded as f64 / t as f64) * 100.0) as i64;
+                if pct != last_pct {
+                    last_pct = pct;
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => {
+                if downloaded == 0 || downloaded - last_bytes >= 8 * 1024 * 1024 {
+                    last_bytes = downloaded;
+                    true
+                } else {
+                    false
+                }
+            }
+        };
+        if should_emit {
+            let _ = on_event.send(DownloadEvent::Progress { downloaded, total });
+        }
+    })
+    .await?;
+
+    path.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Downloaded model path is not valid UTF-8.".to_string())
+}
+
 /// Extract resume text from a PDF and parse it into structured JSON experiences.
 ///
 /// This is **local-only** and fully offline after the first run: it downloads a

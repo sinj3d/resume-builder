@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getLlmSettings, updateLlmSettings, LLMSettings } from '../lib/tauri';
+import { getLlmSettings, updateLlmSettings, downloadCoverletterModel, LLMSettings } from '../lib/tauri';
 import { autoCheckEnabled, setAutoCheck, checkAndPromptForUpdate } from '../lib/updater';
 import { Cpu, Cloud, ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Download } from 'lucide-react';
 import { PageHeader, Button, Card } from '../components/ui';
@@ -19,6 +19,34 @@ export default function SettingsPage() {
     const [autoCheck, setAutoCheckState] = useState(autoCheckEnabled());
     const [checkingUpdate, setCheckingUpdate] = useState(false);
     const [updateResult, setUpdateResult] = useState<string | null>(null);
+
+    // Cover-letter model download. `downloadPct` is null while running with an
+    // unknown total (indeterminate); a number 0–100 otherwise.
+    const [downloading, setDownloading] = useState(false);
+    const [downloadPct, setDownloadPct] = useState<number | null>(null);
+
+    const handleDownloadModel = async () => {
+        setError(null);
+        setDownloading(true);
+        setDownloadPct(0);
+        try {
+            const path = await downloadCoverletterModel(e => {
+                if (e.event === 'progress') {
+                    const { downloaded, total } = e.data;
+                    setDownloadPct(total ? Math.round((downloaded / total) * 100) : null);
+                }
+            });
+            // Point local mode at the freshly downloaded file and persist it, so
+            // cover-letter generation works without a separate Save.
+            setSettings(s => ({ ...s, mode: 'local', gguf_path: path }));
+            await updateLlmSettings('local', path, undefined, settings.cloud_model || undefined);
+            setSaved(true);
+        } catch (err) {
+            setError(String(err));
+        } finally {
+            setDownloading(false);
+        }
+    };
 
     const handleAutoCheckToggle = (enabled: boolean) => {
         setAutoCheckState(enabled);
@@ -138,6 +166,35 @@ export default function SettingsPage() {
                             className={inputCls}
                         />
                         <p className="text-xs text-ink-faint dark:text-cream-faint">Path to a local GGUF chat model used for cover letters.</p>
+
+                        {/* One-click download of the tuned model — fills in the path above. */}
+                        <div className="mt-2 flex flex-col gap-2 rounded border border-dashed border-paper-border p-3 dark:border-charcoal-border">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleDownloadModel}
+                                    disabled={downloading}
+                                >
+                                    <Download size={15} />
+                                    {downloading
+                                        ? (downloadPct === null ? 'Downloading…' : `Downloading… ${downloadPct}%`)
+                                        : 'Download the tuned cover-letter model'}
+                                </Button>
+                                <span className="text-xs text-ink-faint dark:text-cream-faint">
+                                    ~1.8 GB · one-time · runs fully offline afterward
+                                </span>
+                            </div>
+                            {downloading && (
+                                <div className="h-1.5 w-full overflow-hidden rounded-full bg-paper-inset dark:bg-charcoal-inset">
+                                    <div
+                                        className={`h-full rounded-full bg-sienna transition-all dark:bg-sienna-dark ${downloadPct === null ? 'w-1/3 animate-pulse' : ''}`}
+                                        style={downloadPct === null ? undefined : { width: `${downloadPct}%` }}
+                                    />
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
 

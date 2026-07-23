@@ -88,6 +88,12 @@ Finally: in the app, **Settings → Local (GGUF)** → paste the path to
 Test with a brand-new template on the Templates page — template-conditioning
 should generalize to templates never seen in training.
 
+**Shipping it to users:** upload the quantized GGUF to a HuggingFace repo, then
+set `COVERLETTER_MODEL_URL` in `src-tauri/src/llm/model.rs` to its
+`resolve/main/…gguf` link. Settings → Local (GGUF) then shows a **Download the
+tuned cover-letter model** button that fetches it into app-data and fills in the
+path automatically — users never have to find or paste a file path.
+
 ## The prompt-parity contract
 
 The app builds prompts in `src-tauri/src/llm/prompt.rs`; this pipeline mirrors
