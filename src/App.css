@@ -23,3 +23,14 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(154, 140, 112, 0.55);
 }
+
+/* The native month/date picker calendar glyph defaults to near-black, which
+   all but disappears on the dark charcoal inputs. Render it white in dark mode
+   so it stays visible. */
+@media (prefers-color-scheme: dark) {
+  input[type="month"]::-webkit-calendar-picker-indicator,
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.8);
+    cursor: pointer;
+  }
+}

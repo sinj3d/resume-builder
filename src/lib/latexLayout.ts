@@ -65,6 +65,7 @@ export function generateLayoutBlock(cfg: LayoutConfig): string {
 \usepackage{titlesec}
 \usepackage{enumitem}
 \usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
 \pagestyle{empty}
 
 \definecolor{accent}{RGB}{${r}, ${g}, ${b}}

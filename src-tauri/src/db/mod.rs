@@ -39,6 +39,7 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             start_date  TEXT,
             end_date    TEXT,
             category    TEXT NOT NULL,
+            link        TEXT,
             created_at  TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -259,6 +260,16 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             PRAGMA foreign_keys=ON;
             "
         )?;
+    }
+
+    // Add the optional per-experience `link` column to databases created before
+    // it existed. ALTER TABLE ADD COLUMN is not idempotent, so guard on
+    // pragma_table_info. Covers both freshly-swapped and untouched tables.
+    let has_link: bool = conn
+        .prepare("SELECT 1 FROM pragma_table_info('experiences') WHERE name = 'link'")?
+        .exists([])?;
+    if !has_link {
+        conn.execute("ALTER TABLE experiences ADD COLUMN link TEXT", [])?;
     }
 
     Ok(())

@@ -45,6 +45,89 @@ pub fn escape_latex(s: &str) -> String {
     out
 }
 
+/// Escape `s` for LaTeX, additionally turning URLs and email addresses into
+/// clickable `\href{...}{...}` links. Requires `hyperref` in the preamble (see
+/// [`super::layout::generate_layout_block`]). Text that isn't a link is escaped
+/// exactly as [`escape_latex`] would, so the inline-LaTeX escape hatch (raw
+/// `\` and `{}`) still works for hand-written content.
+pub fn linkify_latex(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while !rest.is_empty() {
+        // Emit leading whitespace verbatim (it holds no LaTeX-special chars),
+        // then peel off the next whitespace-delimited word and render it.
+        let word_start = rest.find(|c: char| !c.is_whitespace()).unwrap_or(rest.len());
+        out.push_str(&rest[..word_start]);
+        rest = &rest[word_start..];
+        if rest.is_empty() {
+            break;
+        }
+        let word_end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
+        out.push_str(&render_word(&rest[..word_end]));
+        rest = &rest[word_end..];
+    }
+    out
+}
+
+/// Render one whitespace-free token: a link when its core is a URL or email,
+/// otherwise plain escaped text. Surrounding punctuation (the parentheses in
+/// `(https://x.com)`, a trailing period, …) is escaped and kept outside the
+/// link so it doesn't become part of the clickable target.
+fn render_word(word: &str) -> String {
+    const LEADING: &[char] = &['(', '[', '{', '"', '\'', '<'];
+    const TRAILING: &[char] = &['.', ',', ';', ':', '!', '?', ')', ']', '}', '"', '\'', '>'];
+
+    let without_lead = word.trim_start_matches(LEADING);
+    let pre = &word[..word.len() - without_lead.len()];
+    let core = without_lead.trim_end_matches(TRAILING);
+    let post = &without_lead[core.len()..];
+
+    match link_target(core) {
+        Some(target) => format!(
+            "{}\\href{{{}}}{{{}}}{}",
+            escape_latex(pre),
+            target,
+            escape_latex(core),
+            escape_latex(post),
+        ),
+        None => escape_latex(word),
+    }
+}
+
+/// The `\href` target for a token, or `None` if it isn't a link. Full URLs are
+/// used as-is (hyperref normalizes their special characters); a `www.` prefix
+/// gets an `https://` scheme and a bare email gets `mailto:`.
+fn link_target(core: &str) -> Option<String> {
+    // A brace or backslash would break the `\href{...}` argument — don't risk it.
+    if core.contains(|c| c == '{' || c == '}' || c == '\\') {
+        return None;
+    }
+    let lower = core.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        Some(core.to_string())
+    } else if lower.starts_with("www.") && core.len() > 4 {
+        Some(format!("https://{}", core))
+    } else if is_email(core) {
+        Some(format!("mailto:{}", core))
+    } else {
+        None
+    }
+}
+
+/// Conservative "looks like `local@domain.tld`" check (no scheme), kept strict
+/// so ordinary text like `R&D@home` or a Twitter `@handle` isn't linkified.
+fn is_email(core: &str) -> bool {
+    let mut parts = core.splitn(2, '@');
+    let (Some(local), Some(domain)) = (parts.next(), parts.next()) else {
+        return false;
+    };
+    !local.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !core.contains("://")
+}
+
 /// Map a raw DB category string to a canonical section heading.
 pub fn normalize_category(raw: &str) -> String {
     match raw.trim().to_lowercase().as_str() {
@@ -153,7 +236,7 @@ fn render_entry(output: &mut String, entry: &ResumeEntry) {
     if !entry.bullets.is_empty() {
         output.push_str("\\begin{itemize}\n");
         for bullet in &entry.bullets {
-            output.push_str(&format!("\\item {}\n", escape_latex(bullet)));
+            output.push_str(&format!("\\item {}\n", linkify_latex(bullet)));
         }
         output.push_str("\\end{itemize}\n");
     }
@@ -216,7 +299,7 @@ pub fn inject_bio_header(template: &str, name: &str, details: &[String]) -> Stri
 
     let joined = details
         .iter()
-        .map(|d| escape_latex(d))
+        .map(|d| linkify_latex(d))
         .collect::<Vec<_>>()
         .join(" $\\cdot$ ");
     if !joined.is_empty() {
@@ -260,6 +343,53 @@ mod tests {
         assert_eq!(escape_latex("~/dir ^top"), "\\textasciitilde{}/dir \\textasciicircum{}top");
         // Backslash and braces pass through so inline LaTeX still works.
         assert_eq!(escape_latex("\\textbf{bold}"), "\\textbf{bold}");
+    }
+
+    #[test]
+    fn test_linkify_url_and_email() {
+        let out = linkify_latex("See https://github.com/sinj3d or email me@x.com now");
+        assert!(out.contains("\\href{https://github.com/sinj3d}{https://github.com/sinj3d}"));
+        assert!(out.contains("\\href{mailto:me@x.com}{me@x.com}"));
+        assert!(out.starts_with("See "));
+    }
+
+    #[test]
+    fn test_linkify_peels_surrounding_punctuation() {
+        // Leading paren and trailing ")." stay outside the link; the underscore
+        // is escaped in the display text but kept raw in the href target.
+        let out = linkify_latex("(https://x.com/a_b).");
+        assert!(out.contains("(\\href{https://x.com/a_b}{https://x.com/a\\_b})."));
+    }
+
+    #[test]
+    fn test_linkify_www_prefix_gets_scheme() {
+        let out = linkify_latex("www.simonjin.ca");
+        assert_eq!(out, "\\href{https://www.simonjin.ca}{www.simonjin.ca}");
+    }
+
+    #[test]
+    fn test_linkify_leaves_non_links_and_specials_alone() {
+        // No scheme/@ ⇒ not a link; specials still escape exactly like escape_latex.
+        assert_eq!(linkify_latex("CI/CD and config.json"), "CI/CD and config.json");
+        assert_eq!(linkify_latex("R&D 50%"), "R\\&D 50\\%");
+        assert_eq!(linkify_latex("ping @handle re: R&D@home"), "ping @handle re: R\\&D@home");
+    }
+
+    #[test]
+    fn test_bio_header_links_profile_urls() {
+        let out = inject_bio_header(
+            "% {INJECT_BIO_HEADER}",
+            "Jane Doe",
+            &[
+                "Pittsburgh PA".to_string(),
+                "jane@example.com".to_string(),
+                "https://github.com/jane".to_string(),
+            ],
+        );
+        assert!(out.contains("\\href{mailto:jane@example.com}{jane@example.com}"));
+        assert!(out.contains("\\href{https://github.com/jane}{https://github.com/jane}"));
+        // A plain, non-link detail is untouched.
+        assert!(out.contains("Pittsburgh PA"));
     }
 
     #[test]

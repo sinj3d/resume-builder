@@ -201,6 +201,7 @@ pub fn generate_layout_block(cfg: &LayoutConfig) -> String {
 \usepackage{{titlesec}}
 \usepackage{{enumitem}}
 \usepackage{{xcolor}}
+\usepackage[hidelinks]{{hyperref}}
 \pagestyle{{empty}}
 
 \definecolor{{accent}}{{RGB}}{{{r}, {g}, {b}}}
@@ -372,6 +373,7 @@ mod tests {
     fn test_default_layout_block_values() {
         let block = generate_layout_block(&LayoutConfig::default());
         assert!(block.contains("hmargin=1.00in,vmargin=1.00in"));
+        assert!(block.contains("\\usepackage[hidelinks]{hyperref}"));
         assert!(block.contains("\\definecolor{accent}{RGB}{128, 0, 0}"));
         assert!(block.contains("\\@setfontsize\\normalsize{11.0pt}{13.2pt}"));
         assert!(block.contains("\\fontsize{14.0pt}{16.8pt}\\selectfont\\bfseries\\color{accent}"));

@@ -15,13 +15,13 @@ pub fn create_experience(
 ) -> Result<Experience, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
-        "INSERT INTO experiences (title, org, start_date, end_date, category) VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![input.title, input.org, input.start_date, input.end_date, input.category],
+        "INSERT INTO experiences (title, org, start_date, end_date, category, link) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![input.title, input.org, input.start_date, input.end_date, input.category, input.link],
     ).map_err(|e| e.to_string())?;
 
     let id = conn.last_insert_rowid();
     let exp = conn.query_row(
-        "SELECT id, title, org, start_date, end_date, category, created_at, updated_at FROM experiences WHERE id = ?1",
+        "SELECT id, title, org, start_date, end_date, category, link, created_at, updated_at FROM experiences WHERE id = ?1",
         [id],
         |row| {
             Ok(Experience {
@@ -31,8 +31,9 @@ pub fn create_experience(
                 start_date: row.get(3)?,
                 end_date: row.get(4)?,
                 category: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                link: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
             })
         },
     ).map_err(|e| e.to_string())?;
@@ -45,7 +46,7 @@ pub fn create_experience(
 pub fn list_experiences(state: State<'_, DbState>) -> Result<Vec<Experience>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, title, org, start_date, end_date, category, created_at, updated_at FROM experiences ORDER BY id DESC")
+        .prepare("SELECT id, title, org, start_date, end_date, category, link, created_at, updated_at FROM experiences ORDER BY id DESC")
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -57,8 +58,9 @@ pub fn list_experiences(state: State<'_, DbState>) -> Result<Vec<Experience>, St
                 start_date: row.get(3)?,
                 end_date: row.get(4)?,
                 category: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                link: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -99,6 +101,10 @@ pub fn update_experience(
         sets.push("category = ?".to_string());
         params.push(Box::new(category.clone()));
     }
+    if let Some(ref link) = input.link {
+        sets.push("link = ?".to_string());
+        params.push(Box::new(link.clone()));
+    }
 
     if sets.is_empty() {
         return Err("No fields to update".to_string());
@@ -118,7 +124,7 @@ pub fn update_experience(
 
     // Re-fetch the updated row
     conn.query_row(
-        "SELECT id, title, org, start_date, end_date, category, created_at, updated_at FROM experiences WHERE id = ?1",
+        "SELECT id, title, org, start_date, end_date, category, link, created_at, updated_at FROM experiences WHERE id = ?1",
         [input.id],
         |row| {
             Ok(Experience {
@@ -128,8 +134,9 @@ pub fn update_experience(
                 start_date: row.get(3)?,
                 end_date: row.get(4)?,
                 category: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                link: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
             })
         },
     ).map_err(|e| e.to_string())
@@ -492,7 +499,7 @@ pub fn get_archetype_experiences(state: State<'_, DbState>, archetype_id: i64) -
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare("
-            SELECT e.id, e.title, e.org, e.start_date, e.end_date, e.category, e.created_at, e.updated_at
+            SELECT e.id, e.title, e.org, e.start_date, e.end_date, e.category, e.link, e.created_at, e.updated_at
             FROM experiences e
             JOIN archetype_experiences ae ON e.id = ae.experience_id
             WHERE ae.archetype_id = ?1
@@ -509,8 +516,9 @@ pub fn get_archetype_experiences(state: State<'_, DbState>, archetype_id: i64) -
                 start_date: row.get(3)?,
                 end_date: row.get(4)?,
                 category: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                link: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
             })
         })
         .map_err(|e| e.to_string())?;

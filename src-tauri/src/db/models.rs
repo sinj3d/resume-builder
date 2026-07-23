@@ -9,6 +9,7 @@ pub struct Experience {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub category: String,
+    pub link: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -53,6 +54,7 @@ pub struct CreateExperienceInput {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub category: String,
+    pub link: Option<String>,
 }
 
 /// Input payload for updating an experience.
@@ -64,6 +66,7 @@ pub struct UpdateExperienceInput {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub category: Option<String>,
+    pub link: Option<String>,
 }
 
 /// Structured details for an education-type experience (all optional).

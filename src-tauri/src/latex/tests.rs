@@ -156,6 +156,26 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_rejects_uninjected_template() {
+        // The default skeleton still carries its `% {INJECT_*}` placeholders, so
+        // its body is empty. This must fail fast with an actionable message
+        // *before* tectonic runs — hence the bogus binary path never being hit.
+        let tex = layout::generate_document(&layout::LayoutConfig::default());
+        let err = compile_latex(&tex, std::path::Path::new("nonexistent-tectonic"))
+            .expect_err("an un-injected template must be rejected");
+        assert!(err.contains("Inject to editor"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn test_compile_rejects_empty_body() {
+        // A body of only whitespace and comments would typeset zero pages.
+        let tex = "\\documentclass{article}\n\\begin{document}\n   \n% just a comment\n\\end{document}";
+        let err = compile_latex(tex, std::path::Path::new("nonexistent-tectonic"))
+            .expect_err("an empty document body must be rejected");
+        assert!(err.contains("nothing to compile"), "unexpected error: {err}");
+    }
+
+    #[test]
     fn test_template_injection_compilation() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {

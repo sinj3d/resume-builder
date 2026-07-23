@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { LayoutConfig, ResumeData, ResumeEntryData } from '../lib/tauri';
 
 // CSS px per LaTeX pt / per inch (browser standard: 96px = 1in = 72pt).
@@ -74,6 +74,47 @@ function dateRange(entry: ResumeEntryData): string {
     const e = entry.end || '';
     if (s && e) return `${s} – ${e}`;
     return s || e || '';
+}
+
+// ── Clickable links in the live preview (parity with the compiled PDF's
+// `\href`; see `linkify_latex` in template.rs). Links inherit the surrounding
+// text style so, like `hidelinks` in the PDF, they read as plain text. ──
+const LEADING_PUNCT = /^[([{"'<]+/;
+const TRAILING_PUNCT = /[.,;:!?)\]}"'>]+$/;
+
+function linkTarget(core: string): string | null {
+    if (/[{}\\]/.test(core)) return null;
+    const lower = core.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) return core;
+    if (lower.startsWith('www.') && core.length > 4) return `https://${core}`;
+    const at = core.indexOf('@');
+    if (at > 0 && !core.includes('://')) {
+        const domain = core.slice(at + 1);
+        if (domain.includes('.') && !domain.startsWith('.') && !domain.endsWith('.')) {
+            return `mailto:${core}`;
+        }
+    }
+    return null;
+}
+
+function linkify(text: string): ReactNode[] {
+    // Split on whitespace but keep the separators so spacing is preserved.
+    return text.split(/(\s+)/).map((tok, i) => {
+        if (/^\s*$/.test(tok)) return tok || null;
+        const pre = tok.match(LEADING_PUNCT)?.[0] ?? '';
+        const rest = tok.slice(pre.length);
+        const post = rest.match(TRAILING_PUNCT)?.[0] ?? '';
+        const core = post ? rest.slice(0, -post.length) : rest;
+        const target = core ? linkTarget(core) : null;
+        if (!target) return tok;
+        return (
+            <Fragment key={i}>
+                {pre}
+                <a href={target} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{core}</a>
+                {post}
+            </Fragment>
+        );
+    });
 }
 
 /**
@@ -163,7 +204,11 @@ export default function HtmlResume({ data, layout }: { data: ResumeData; layout:
                         </div>
                     )}
                     {details.length > 0 && (
-                        <div style={{ marginTop: 2 * PT }}>{details.join(' · ')}</div>
+                        <div style={{ marginTop: 2 * PT }}>
+                            {details.map((d, i) => (
+                                <Fragment key={i}>{i > 0 ? ' · ' : ''}{linkify(d)}</Fragment>
+                            ))}
+                        </div>
                     )}
                 </div>
             )}
@@ -232,7 +277,7 @@ export default function HtmlResume({ data, layout }: { data: ResumeData; layout:
                                     >
                                         {entry.bullets.map((bullet, j) => (
                                             <li key={j} style={{ marginBottom: layout.item_sep_pt * PT }}>
-                                                {bullet}
+                                                {linkify(bullet)}
                                             </li>
                                         ))}
                                     </ul>

@@ -311,10 +311,14 @@ export default function LatexPage() {
     };
 
     const handleManualCompile = () => {
-        if (source.includes('% {INJECT_')) {
-            setNotification('Template still contains placeholders — click "Inject to Editor" first, or the PDF will be empty.');
-        }
         setPreviewMode('pdf');
+        // The template's `% {INJECT_*}` placeholders are comments, so an
+        // un-injected document has an empty body and can't compile. Stop here
+        // with a clear next step instead of handing Tectonic an empty page.
+        if (source.includes('% {INJECT_')) {
+            setNotification('Template still contains placeholders — click "Inject to editor" first.');
+            return;
+        }
         window.clearTimeout(compileTimer.current);
         runCompile(source);
     };

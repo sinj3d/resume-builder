@@ -7,6 +7,7 @@ export interface Experience {
   start_date: string;
   end_date: string;
   category: string;
+  link?: string;
   created_at?: string;
 }
 
@@ -76,26 +77,30 @@ export type GenerationEvent =
 
 // Database Commands
 export const listExperiences = () => invoke<Experience[]>('list_experiences');
-export const createExperience = (title: string, org: string, start_date: string, end_date: string, category: string) =>
-  invoke<Experience>('create_experience', { 
-    input: { 
-      title, 
-      org: org || null, 
-      start_date: start_date || null, 
-      end_date: end_date || null, 
-      category 
-    } 
+export const createExperience = (title: string, org: string, start_date: string, end_date: string, category: string, link: string = '') =>
+  invoke<Experience>('create_experience', {
+    input: {
+      title,
+      org: org || null,
+      start_date: start_date || null,
+      end_date: end_date || null,
+      category,
+      link: link || null
+    }
   });
-export const updateExperience = (id: number, title: string, org: string, start_date: string, end_date: string, category: string) =>
-  invoke('update_experience', { 
-    input: { 
-      id, 
+export const updateExperience = (id: number, title: string, org: string, start_date: string, end_date: string, category: string, link: string = '') =>
+  invoke('update_experience', {
+    input: {
+      id,
       title: title || null,
       org: org || null,
       start_date: start_date || null,
       end_date: end_date || null,
-      category: category || null
-    } 
+      category: category || null,
+      // Send the raw string (not `|| null`) so clearing the field persists —
+      // the Rust update treats `null` as "leave unchanged".
+      link
+    }
   });
 export const deleteExperience = (id: number) => invoke('delete_experience', { id });
 

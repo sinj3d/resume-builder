@@ -4,7 +4,8 @@ import {
     listBullets, createBullet, deleteBullet, updateBullet, BulletPoint,
     getEducationDetails, upsertEducationDetails, deleteEducationDetails,
 } from '../lib/tauri';
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, ExternalLink } from 'lucide-react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { PageHeader, Button, Card, FilterPills, EmptyState, Toast, CategoryLabel } from '../components/ui';
 
 /// Mirrors the education arm of `normalize_category` in latex/template.rs.
@@ -37,7 +38,7 @@ export default function ExperiencesPage() {
 
     // Form state (editingExp !== null means the form updates an existing experience)
     const [editingExp, setEditingExp] = useState<Experience | null>(null);
-    const [expForm, setExpForm] = useState({ title: '', org: '', start_date: '', end_date: '', category: '' });
+    const [expForm, setExpForm] = useState({ title: '', org: '', start_date: '', end_date: '', category: '', link: '' });
     const [isCurrentJob, setIsCurrentJob] = useState(false);
     const [customCategory, setCustomCategory] = useState('');
     const [eduForm, setEduForm] = useState(EMPTY_EDU_FORM);
@@ -102,7 +103,7 @@ export default function ExperiencesPage() {
     };
 
     const resetForm = () => {
-        setExpForm({ title: '', org: '', start_date: '', end_date: '', category: '' });
+        setExpForm({ title: '', org: '', start_date: '', end_date: '', category: '', link: '' });
         setIsCurrentJob(false);
         setCustomCategory('');
         setEduForm(EMPTY_EDU_FORM);
@@ -119,6 +120,7 @@ export default function ExperiencesPage() {
             start_date: exp.start_date || '',
             end_date: isPresent ? '' : (exp.end_date || ''),
             category: exp.category,
+            link: exp.link || '',
         });
         setIsCurrentJob(isPresent);
         setCustomCategory('');
@@ -156,11 +158,11 @@ export default function ExperiencesPage() {
         try {
             let expId: number;
             if (editingExp) {
-                await updateExperience(editingExp.id, expForm.title, expForm.org, expForm.start_date, finalEndDate, finalCategory);
+                await updateExperience(editingExp.id, expForm.title, expForm.org, expForm.start_date, finalEndDate, finalCategory, expForm.link.trim());
                 expId = editingExp.id;
                 setNotification('Experience updated!');
             } else {
-                const created = await createExperience(expForm.title, expForm.org, expForm.start_date, finalEndDate, finalCategory);
+                const created = await createExperience(expForm.title, expForm.org, expForm.start_date, finalEndDate, finalCategory, expForm.link.trim());
                 expId = created.id;
                 for (const line of splitBulletLines(bulletsText)) {
                     await createBullet(expId, line);
@@ -385,6 +387,18 @@ export default function ExperiencesPage() {
                                 </div>
                             </div>
 
+                            <div className="flex flex-col gap-1.5 md:col-span-2">
+                                <label className={labelCls}>
+                                    Link <span className="text-[10px] font-normal normal-case tracking-normal text-ink-faint dark:text-cream-faint">(optional — project, company, or portfolio URL)</span>
+                                </label>
+                                <input className={inputCls}
+                                    inputMode="url"
+                                    placeholder="e.g. https://github.com/you/project"
+                                    value={expForm.link}
+                                    onChange={e => setExpForm({ ...expForm, link: e.target.value })}
+                                />
+                            </div>
+
                             {/* Bullet points (create only — existing entries manage bullets on their card) */}
                             {!editingExp && (
                                 <div className="flex flex-col gap-1.5 md:col-span-2">
@@ -483,6 +497,15 @@ export default function ExperiencesPage() {
                                             <span className="text-[12.5px] text-ink-muted dark:text-cream-muted">
                                                 {displayDate(exp.start_date)} — {displayDate(exp.end_date)}
                                             </span>
+                                            {exp.link && (
+                                                <button
+                                                    onClick={e => { e.stopPropagation(); openUrl(exp.link!).catch(console.error); }}
+                                                    className="inline-flex items-center gap-1 text-[12.5px] text-sienna transition-colors hover:text-sienna/75 dark:text-sienna-dark dark:hover:text-sienna-dark/75"
+                                                    title={exp.link}
+                                                >
+                                                    <ExternalLink size={13} /> Link
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                     {expandedExpId === exp.id ? (
