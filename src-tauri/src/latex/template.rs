@@ -9,11 +9,22 @@ use crate::db::models::EducationDetails;
 /// HTML preview.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ResumeEntry {
+    /// Row id of the backing experience. Internal bookkeeping, like
+    /// `bullet_ids`: it lets the user switch individual experiences on and off
+    /// after a job-description match (see [`super::tailor`]).
+    #[serde(skip)]
+    pub experience_id: i64,
     pub title: String,
     pub org: Option<String>,
     pub start: Option<String>,
     pub end: Option<String>,
     pub bullets: Vec<String>,
+    /// Row ids of `bullets`, positionally parallel to it, so job-description
+    /// tailoring can match retrieval scores back to the text it must trim
+    /// (see [`super::tailor`]). Internal bookkeeping — never sent to the
+    /// frontend, and every mutation of `bullets` must mutate this in step.
+    #[serde(skip)]
+    pub bullet_ids: Vec<i64>,
     pub education: Option<EducationDetails>,
     /// Optional URL for the experience; renders the title as a clickable link.
     #[serde(default)]
@@ -359,11 +370,13 @@ mod tests {
 
     fn entry(title: &str, org: Option<&str>, bullets: Vec<&str>) -> ResumeEntry {
         ResumeEntry {
+            experience_id: 0,
             title: title.to_string(),
             org: org.map(|s| s.to_string()),
             start: Some("Jan 2020".to_string()),
             end: Some("Present".to_string()),
             bullets: bullets.into_iter().map(|s| s.to_string()).collect(),
+            bullet_ids: vec![],
             education: None,
             link: None,
         }
@@ -463,11 +476,13 @@ mod tests {
     #[test]
     fn test_education_entry_rendering() {
         let edu_entry = ResumeEntry {
+            experience_id: 0,
             title: "B.S. Computer Science".to_string(),
             org: Some("State University".to_string()),
             start: Some("2022".to_string()),
             end: Some("2026".to_string()),
             bullets: vec![],
+            bullet_ids: vec![],
             education: Some(crate::db::models::EducationDetails {
                 experience_id: 1,
                 degree: Some("B.S. Computer Science".to_string()),
@@ -491,11 +506,13 @@ mod tests {
     #[test]
     fn test_education_entry_omits_empty_fields() {
         let edu_entry = ResumeEntry {
+            experience_id: 0,
             title: "B.S. CS".to_string(),
             org: Some("State University".to_string()),
             start: None,
             end: None,
             bullets: vec![],
+            bullet_ids: vec![],
             education: Some(crate::db::models::EducationDetails {
                 experience_id: 1,
                 degree: None,

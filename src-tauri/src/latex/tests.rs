@@ -57,11 +57,13 @@ mod tests {
                 template::SectionGroup {
                     heading: "Professional Experience".to_string(),
                     entries: vec![template::ResumeEntry {
+                        experience_id: 0,
                         title: "Software Engineer".to_string(),
                         org: Some("Acme R&D".to_string()),
                         start: Some("Jan 2020".to_string()),
                         end: Some("Present".to_string()),
                         bullets: vec!["Cut costs by 50% using snake_case tools".to_string()],
+                        bullet_ids: vec![],
                         education: None,
                         link: None,
                     }],
@@ -69,11 +71,13 @@ mod tests {
                 template::SectionGroup {
                     heading: "Education".to_string(),
                     entries: vec![template::ResumeEntry {
+                        experience_id: 0,
                         title: "B.S. Computer Science".to_string(),
                         org: Some("State University".to_string()),
                         start: Some("2022".to_string()),
                         end: Some("2026".to_string()),
                         bullets: vec![],
+                        bullet_ids: vec![],
                         education: Some(crate::db::models::EducationDetails {
                             experience_id: 1,
                             degree: Some("B.S. Computer Science".to_string()),
@@ -129,11 +133,13 @@ mod tests {
                     &[template::SectionGroup {
                         heading: "Projects".to_string(),
                         entries: vec![template::ResumeEntry {
+                            experience_id: 0,
                             title: "Thing".to_string(),
                             org: None,
                             start: None,
                             end: None,
                             bullets: vec!["Did the thing".to_string()],
+                            bullet_ids: vec![],
                             education: None,
                             link: None,
                         }],

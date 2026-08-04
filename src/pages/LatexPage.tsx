@@ -4,7 +4,9 @@ import {
     compileTex, injectTemplate, getDefaultTemplate, listArchetypes, Archetype,
     getArchetypeCategories, savePdf, getLayoutPresets, getResumeConfig,
     saveResumeConfig, getResumeData, LayoutConfig, LayoutPreset, SectionDef, ResumeData,
+    TailorReport, TailorSpec, TailoredExperience,
 } from '../lib/tauri';
+import ResumeSourcePanel, { BuildSource } from '../components/ResumeSourcePanel';
 import {
     DEFAULT_LAYOUT, hasLayoutMarkers, patchLayoutBlock,
 } from '../lib/latexLayout';
@@ -29,8 +31,11 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const COMPILE_DEBOUNCE_MS = 600;
 const SAVE_DEBOUNCE_MS = 1200;
+/// Retrieval re-runs whenever a layout knob moves, because the page budget is
+/// what decides how much of the record survives. Debounced so dragging a
+/// slider doesn't fire one query per tick.
+const TAILOR_DEBOUNCE_MS = 400;
 
-const inputCls = "px-3 py-2 text-sm bg-paper dark:bg-charcoal-inset border border-paper-border dark:border-charcoal-border rounded text-ink dark:text-cream focus:outline-none focus:ring-2 focus:ring-sienna/30 focus:border-sienna transition-all";
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-[.09em] text-ink-muted dark:text-cream-muted";
 
 /**
@@ -156,6 +161,33 @@ export default function LatexPage() {
     const [resumeData, setResumeData] = useState<ResumeData | null>(null);
     const [autoCompile, setAutoCompile] = useState(true);
 
+    // Content source: archetype or job description
+    const [sourceMode, setSourceMode] = useState<BuildSource>('archetype');
+    const [jd, setJd] = useState('');
+    // The job description the shown resume was actually built from — separate
+    // from the textarea so typing doesn't churn through retrieval.
+    const [appliedJd, setAppliedJd] = useState('');
+    // Bumped by "Match experiences" so re-running against unchanged text still
+    // refreshes (e.g. after editing experiences in another tab).
+    const [matchNonce, setMatchNonce] = useState(0);
+    const [tailoring, setTailoring] = useState<TailorReport | null>(null);
+    const [matching, setMatching] = useState(false);
+    // Per-experience overrides on the retrieval ranking. Excluded is a hard no;
+    // pinned forces an experience in ahead of better-scoring ones.
+    const [excludedExp, setExcludedExp] = useState<number[]>([]);
+    const [pinnedExp, setPinnedExp] = useState<number[]>([]);
+
+    const tailorSpec: TailorSpec | null =
+        sourceMode === 'jd' && appliedJd.trim()
+            ? {
+                job_description: appliedJd,
+                excluded_experience_ids: excludedExp,
+                pinned_experience_ids: pinnedExp,
+            }
+            : null;
+    const archetypeParam = selectedArchetype === '' ? null : (selectedArchetype as number);
+    const contentReady = sourceMode === 'jd' ? tailorSpec !== null : archetypeParam !== null;
+
     // View state
     const [leftTab, setLeftTab] = useState<'design' | 'source'>('design');
     const [previewMode, setPreviewMode] = useState<'live' | 'pdf'>('live');
@@ -227,20 +259,27 @@ export default function LatexPage() {
         listArchetypes().then(setArchetypes).catch(console.error);
     }, []);
 
-    // When the archetype changes, load its saved config (or defaults derived
-    // from its categories) and the structured content for the live preview.
+    // When the archetype (or the content source) changes, load the saved config
+    // — or defaults derived from the available categories — and, in archetype
+    // mode, the structured content for the live preview. Job-description mode
+    // leaves the content to the retrieval effect below.
     useEffect(() => {
-        if (selectedArchetype === '') {
+        if (sourceMode === 'archetype' && selectedArchetype === '') {
             setSections([]);
             setResumeData(null);
+            setTailoring(null);
             return;
         }
+        let cancelled = false;
         (async () => {
             try {
+                // A null archetype means "the whole record": every category the
+                // job description could possibly draw on.
                 const [cats, cfg] = await Promise.all([
-                    getArchetypeCategories(selectedArchetype as number),
-                    getResumeConfig(selectedArchetype as number),
+                    getArchetypeCategories(archetypeParam),
+                    archetypeParam === null ? Promise.resolve(null) : getResumeConfig(archetypeParam),
                 ]);
+                if (cancelled) return;
 
                 let nextLayout: LayoutConfig = { ...DEFAULT_LAYOUT };
                 if (cfg?.layout_json) {
@@ -253,12 +292,46 @@ export default function LatexPage() {
 
                 setLayout(nextLayout);
                 setSections(nextSections);
-                setResumeData(await getResumeData(selectedArchetype as number, nextSections));
+                if (sourceMode === 'archetype') {
+                    const data = await getResumeData(archetypeParam, nextSections);
+                    if (!cancelled) {
+                        setResumeData(data);
+                        setTailoring(null);
+                    }
+                }
             } catch (err) {
                 console.error(err);
             }
         })();
-    }, [selectedArchetype]);
+        return () => { cancelled = true; };
+    }, [selectedArchetype, sourceMode]);
+
+    // Job-description mode: retrieve against the posting and keep what fits the
+    // page target. Re-runs on every layout or section change, since those are
+    // exactly what the page budget is computed from.
+    useEffect(() => {
+        if (sourceMode !== 'jd' || !tailorSpec) return;
+        let cancelled = false;
+        setMatching(true);
+        const timer = window.setTimeout(async () => {
+            try {
+                const data = await getResumeData(archetypeParam, sections, layout, tailorSpec);
+                if (cancelled) return;
+                setResumeData(data);
+                setTailoring(data.tailoring ?? null);
+                setError(null);
+            } catch (err) {
+                if (!cancelled) setError(String(err));
+            } finally {
+                if (!cancelled) setMatching(false);
+            }
+        }, TAILOR_DEBOUNCE_MS);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timer);
+            setMatching(false);
+        };
+    }, [sourceMode, appliedJd, matchNonce, layout, sections, selectedArchetype, excludedExp, pinnedExp]);
 
     useEffect(() => {
         if (notification) {
@@ -298,8 +371,40 @@ export default function LatexPage() {
     const handleSectionsChange = (next: SectionDef[]) => {
         setSections(next);
         scheduleSave(layout, next, selectedArchetype);
-        if (selectedArchetype !== '') {
+        // In job-description mode the retrieval effect reloads off `sections`.
+        if (sourceMode === 'archetype' && selectedArchetype !== '') {
             getResumeData(selectedArchetype as number, next).then(setResumeData).catch(console.error);
+        }
+    };
+
+    /** Run (or re-run) retrieval for the pasted posting. */
+    const handleMatch = () => {
+        if (!jd.trim()) {
+            setError('Paste a job description to match against.');
+            return;
+        }
+        setError(null);
+        // Per-experience overrides belong to the posting they were made
+        // against, so a genuinely new posting starts from retrieval's own call.
+        if (jd !== appliedJd) {
+            setExcludedExp([]);
+            setPinnedExp([]);
+        }
+        setAppliedJd(jd);
+        setMatchNonce(n => n + 1);
+    };
+
+    /** Flip one experience in or out of the tailored resume. Switching one on
+     *  pins it, so an experience that was cut for space pushes out a weaker
+     *  match instead of silently staying out. */
+    const handleToggleExperience = (exp: TailoredExperience) => {
+        const id = exp.experience_id;
+        if (exp.kept) {
+            setExcludedExp(prev => (prev.includes(id) ? prev : [...prev, id]));
+            setPinnedExp(prev => prev.filter(x => x !== id));
+        } else {
+            setExcludedExp(prev => prev.filter(x => x !== id));
+            setPinnedExp(prev => (prev.includes(id) ? prev : [...prev, id]));
         }
     };
 
@@ -332,14 +437,16 @@ export default function LatexPage() {
     };
 
     const handleInject = async () => {
-        if (selectedArchetype === '') {
-            setError('Please select an archetype to inject.');
+        if (!contentReady) {
+            setError(sourceMode === 'jd'
+                ? 'Paste a job description and hit "Match experiences" first.'
+                : 'Please select an archetype to inject.');
             return;
         }
         setInjecting(true);
         setError(null);
         try {
-            const rawLatex = await injectTemplate(selectedArchetype as number, layout, sections);
+            const rawLatex = await injectTemplate(archetypeParam, layout, sections, tailorSpec);
             setSource(rawLatex);
             // Drift tripwire: the TS layout mirror must reproduce the Rust
             // block byte-for-byte. If not, patching would fight injection.
@@ -400,16 +507,7 @@ export default function LatexPage() {
                 <h1 className="font-serif text-2xl font-semibold text-ink dark:text-cream">Resume Editor</h1>
 
                 <div className="flex flex-wrap gap-3 items-center">
-                    <select
-                        className={inputCls}
-                        value={selectedArchetype}
-                        onChange={e => setSelectedArchetype(Number(e.target.value) || '')}
-                    >
-                        <option value=''>-- Select archetype --</option>
-                        {archetypes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                    </select>
-
-                    <Button variant="outline" strong size="sm" onClick={handleInject} disabled={injecting || selectedArchetype === ''}>
+                    <Button variant="outline" strong size="sm" onClick={handleInject} disabled={injecting || !contentReady}>
                         <DownloadCloud size={15} /> Inject to editor
                     </Button>
 
@@ -436,6 +534,23 @@ export default function LatexPage() {
 
                 {/* Left: design controls / LaTeX source */}
                 <div className="w-[46%] min-w-[380px] flex flex-col min-h-0 gap-2">
+                    <ResumeSourcePanel
+                        mode={sourceMode}
+                        onModeChange={setSourceMode}
+                        archetypes={archetypes}
+                        selectedArchetype={selectedArchetype}
+                        onArchetypeChange={setSelectedArchetype}
+                        jd={jd}
+                        onJdChange={setJd}
+                        onMatch={handleMatch}
+                        matching={matching}
+                        matched={appliedJd !== ''}
+                        edited={appliedJd !== '' && jd.trim() !== '' && jd !== appliedJd}
+                        tailoring={tailoring}
+                        targetPages={layout.target_pages}
+                        onToggleExperience={handleToggleExperience}
+                    />
+
                     <div className="flex gap-1 shrink-0 bg-paper-inset dark:bg-charcoal-inset p-1 rounded-lg self-start">
                         <button
                             onClick={() => setLeftTab('design')}
@@ -585,7 +700,11 @@ export default function LatexPage() {
                             ) : (
                                 <div className="m-auto flex flex-col items-center gap-3 text-ink-muted dark:text-cream-muted">
                                     <Eye size={48} className="opacity-20" />
-                                    <p className="font-medium">Select an archetype to see the live preview.</p>
+                                    <p className="font-medium">
+                                        {sourceMode === 'jd'
+                                            ? 'Paste a job description and hit "Match experiences".'
+                                            : 'Select an archetype to see the live preview.'}
+                                    </p>
                                 </div>
                             )
                         ) : pdfUrl ? (

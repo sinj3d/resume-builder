@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod download;
 pub mod layout;
+pub mod tailor;
 pub mod template;
 
 use std::env;

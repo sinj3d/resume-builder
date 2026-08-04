@@ -1,5 +1,6 @@
-use super::{compile_latex, download, layout, template};
+use super::{compile_latex, download, layout, tailor, template};
 use crate::db::DbState;
+use crate::rag::EmbeddingState;
 use std::collections::{HashMap, HashSet};
 use tauri::{AppHandle, State};
 
@@ -42,24 +43,33 @@ pub async fn compile_tex(source: String, app: AppHandle) -> Result<Vec<u8>, Stri
 /// Returns the normalized category names present in a given archetype's
 /// experiences, ordered by the default section order (then alphabetically).
 /// This is the raw material the section composer arranges into sections.
+///
+/// `archetype_id` is `None` for the job-description path, which draws on the
+/// whole record rather than a curated archetype.
 #[tauri::command]
 pub fn get_archetype_categories(
-    archetype_id: i64,
+    archetype_id: Option<i64>,
     state: State<'_, DbState>,
 ) -> Result<Vec<String>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare(
-            "SELECT DISTINCT e.category
-             FROM experiences e
-             JOIN archetype_experiences ae ON e.id = ae.experience_id
-             WHERE ae.archetype_id = ?1",
-        )
+        .prepare(match archetype_id {
+            Some(_) => {
+                "SELECT DISTINCT e.category
+                 FROM experiences e
+                 JOIN archetype_experiences ae ON e.id = ae.experience_id
+                 WHERE ae.archetype_id = ?1"
+            }
+            None => "SELECT DISTINCT category FROM experiences",
+        })
         .map_err(|e| e.to_string())?;
 
+    let arch_param: Vec<i64> = archetype_id.into_iter().collect();
     let raw_categories: Vec<String> = stmt
-        .query_map([archetype_id], |row| row.get(0))
+        .query_map(rusqlite::params_from_iter(arch_param.iter()), |row| {
+            row.get(0)
+        })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -146,17 +156,26 @@ pub struct ResumeData {
     pub bio: crate::db::models::Bio,
     pub skills: Vec<(String, Vec<String>)>,
     pub groups: Vec<template::SectionGroup>,
+    /// Present only when the content was tailored to a job description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tailoring: Option<tailor::TailorReport>,
 }
 
-/// Fetch and group an archetype's resume content: bio, tagged skills, and
-/// tagged experiences composed into sections per `defs` (merged sections pool
-/// their categories' entries, sorted most-recent first; uncovered categories
-/// are appended as their own sections so nothing silently disappears).
+/// Fetch and group resume content: bio, skills, and experiences composed into
+/// sections per `defs` (merged sections pool their categories' entries, sorted
+/// most-recent first; uncovered categories are appended as their own sections
+/// so nothing silently disappears).
+///
+/// `archetype_id` selects what's tagged to one archetype; `None` draws on the
+/// entire record, which is what the job-description path retrieves against.
 fn assemble_resume_data(
     conn: &rusqlite::Connection,
-    archetype_id: i64,
+    archetype_id: Option<i64>,
     defs: &[layout::SectionDef],
 ) -> Result<ResumeData, String> {
+    // Bound once and reused: `Option<i64>` as a 0-or-1 element parameter list,
+    // so the archetype-filtered and whole-record queries share this code.
+    let arch_param: Vec<i64> = archetype_id.into_iter().collect();
     {
         // 1. Fetch bio
         let bio: crate::db::models::Bio = conn
@@ -187,18 +206,21 @@ fn assemble_resume_data(
 
         // 2. Fetch tagged skills grouped by category
         let mut skill_stmt = conn
-            .prepare(
-                "SELECT s.category, s.name
-                 FROM skills s
-                 JOIN archetype_skills as_k ON s.id = as_k.skill_id
-                 WHERE as_k.archetype_id = ?1
-                 ORDER BY s.category ASC, s.name ASC",
-            )
+            .prepare(match archetype_id {
+                Some(_) => {
+                    "SELECT s.category, s.name
+                     FROM skills s
+                     JOIN archetype_skills as_k ON s.id = as_k.skill_id
+                     WHERE as_k.archetype_id = ?1
+                     ORDER BY s.category ASC, s.name ASC"
+                }
+                None => "SELECT category, name FROM skills ORDER BY category ASC, name ASC",
+            })
             .map_err(|e| e.to_string())?;
 
         let mut skills_by_cat: HashMap<String, Vec<String>> = HashMap::new();
         let skill_rows = skill_stmt
-            .query_map([archetype_id], |row| {
+            .query_map(rusqlite::params_from_iter(arch_param.iter()), |row| {
                 let cat: String = row.get(0)?;
                 let name: String = row.get(1)?;
                 Ok((cat, name))
@@ -214,15 +236,24 @@ fn assemble_resume_data(
         // 3. Fetch experiences (with any education details), grouped by
         //    normalised category
         let mut exp_stmt = conn
-            .prepare(
-                "SELECT e.id, e.title, e.org, e.start_date, e.end_date, e.category,
-                        ed.experience_id, ed.degree, ed.gpa, ed.coursework, ed.honors, e.link
-                 FROM experiences e
-                 JOIN archetype_experiences ae ON e.id = ae.experience_id
-                 LEFT JOIN education_details ed ON ed.experience_id = e.id
-                 WHERE ae.archetype_id = ?1
-                 ORDER BY e.created_at DESC",
-            )
+            .prepare(match archetype_id {
+                Some(_) => {
+                    "SELECT e.id, e.title, e.org, e.start_date, e.end_date, e.category,
+                            ed.experience_id, ed.degree, ed.gpa, ed.coursework, ed.honors, e.link
+                     FROM experiences e
+                     JOIN archetype_experiences ae ON e.id = ae.experience_id
+                     LEFT JOIN education_details ed ON ed.experience_id = e.id
+                     WHERE ae.archetype_id = ?1
+                     ORDER BY e.created_at DESC"
+                }
+                None => {
+                    "SELECT e.id, e.title, e.org, e.start_date, e.end_date, e.category,
+                            ed.experience_id, ed.degree, ed.gpa, ed.coursework, ed.honors, e.link
+                     FROM experiences e
+                     LEFT JOIN education_details ed ON ed.experience_id = e.id
+                     ORDER BY e.created_at DESC"
+                }
+            })
             .map_err(|e| e.to_string())?;
 
         struct ExpRow {
@@ -237,7 +268,7 @@ fn assemble_resume_data(
         }
 
         let exps_mapped = exp_stmt
-            .query_map([archetype_id], |row| {
+            .query_map(rusqlite::params_from_iter(arch_param.iter()), |row| {
                 let edu_id: Option<i64> = row.get(6)?;
                 Ok(ExpRow {
                     id: row.get(0)?,
@@ -262,17 +293,19 @@ fn assemble_resume_data(
         let mut category_map: HashMap<String, Vec<(i64, template::ResumeEntry)>> = HashMap::new();
 
         for exp in exps_mapped.filter_map(|x| x.ok()) {
-            // Fetch bullets for this experience
+            // Fetch bullets for this experience. Ids ride along so a later
+            // tailoring pass can score them (see `latex::tailor`); they are
+            // stripped before the data reaches the frontend.
             let mut b_stmt = conn
                 .prepare(
-                    "SELECT content FROM bullet_points WHERE experience_id = ?1 ORDER BY sort_order ASC",
+                    "SELECT id, content FROM bullet_points WHERE experience_id = ?1 ORDER BY sort_order ASC",
                 )
                 .map_err(|e| e.to_string())?;
-            let bullets: Vec<String> = b_stmt
-                .query_map([exp.id], |r| r.get(0))
+            let (bullet_ids, bullets): (Vec<i64>, Vec<String>) = b_stmt
+                .query_map([exp.id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
                 .map_err(|e| e.to_string())?
                 .filter_map(|x| x.ok())
-                .collect();
+                .unzip();
 
             let heading = template::normalize_category(&exp.category);
 
@@ -296,11 +329,13 @@ fn assemble_resume_data(
             category_map.entry(heading).or_default().push((
                 key,
                 template::ResumeEntry {
+                    experience_id: exp.id,
                     title: exp.title,
                     org: exp.org,
                     start: exp.start,
                     end: exp.end,
                     bullets,
+                    bullet_ids,
                     education,
                     link: exp.link,
                 },
@@ -351,50 +386,128 @@ fn assemble_resume_data(
             });
         }
 
-        Ok(ResumeData { bio, skills: grouped_skills, groups })
+        Ok(ResumeData { bio, skills: grouped_skills, groups, tailoring: None })
     }
 }
 
-/// Returns the structured resume content for an archetype (bio, skills, and
-/// composed sections). The frontend's live HTML preview renders from this.
+/// Assemble resume content, optionally narrowing it to what a job description
+/// actually asks for.
+///
+/// Without `spec` this is plain assembly (the archetype path). With one, hybrid
+/// retrieval scores every bullet against the posting and
+/// [`tailor::select_within_budget`] keeps the strongest experiences that still
+/// fit `layout.target_pages`.
+fn assemble_tailored(
+    db: &State<'_, DbState>,
+    emb: &State<'_, EmbeddingState>,
+    archetype_id: Option<i64>,
+    defs: &[layout::SectionDef],
+    layout: &layout::LayoutConfig,
+    spec: Option<&tailor::TailorSpec>,
+) -> Result<ResumeData, String> {
+    // Lock order (db, then embeddings) matches `rag::commands::search_similar`;
+    // taking them in the opposite order anywhere would risk a deadlock.
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut data = assemble_resume_data(&conn, archetype_id, defs)?;
+
+    let Some(spec) = spec else { return Ok(data) };
+
+    let mut model = emb.0.lock().map_err(|e| e.to_string())?;
+    let scores: HashMap<i64, f64> = crate::rag::retrieval::retrieve_hybrid(
+        &conn,
+        &mut model,
+        &spec.job_description,
+        archetype_id,
+        tailor::RETRIEVAL_TOP_K,
+    )?
+    .into_iter()
+    .map(|b| (b.id, b.score))
+    .collect();
+
+    let (groups, report) = tailor::select_within_budget(
+        &data.bio,
+        &data.skills,
+        std::mem::take(&mut data.groups),
+        &scores,
+        layout,
+        spec,
+    );
+    data.groups = groups;
+    data.tailoring = Some(report);
+    Ok(data)
+}
+
+/// Returns the structured resume content (bio, skills, and composed sections).
+/// The frontend's live HTML preview renders from this.
+///
+/// # Parameters
+/// * `archetype_id` – Which archetype's tagged items to pull; `None` draws on
+///                    the whole record (the job-description path).
+/// * `sections`     – Ordered section definitions (heading + categories each).
+/// * `layout`       – Needed only with `tailor`, whose page budget it defines.
+/// * `tailor`       – When set, retrieve against the job description and keep
+///                    only what answers it within `layout.target_pages`.
 #[tauri::command]
 pub fn get_resume_data(
-    archetype_id: i64,
+    archetype_id: Option<i64>,
     sections: Option<Vec<layout::SectionDef>>,
+    layout: Option<layout::LayoutConfig>,
+    tailor: Option<tailor::TailorSpec>,
     state: State<'_, DbState>,
+    emb: State<'_, EmbeddingState>,
 ) -> Result<ResumeData, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    assemble_resume_data(&conn, archetype_id, &sections.unwrap_or_default())
+    assemble_tailored(
+        &state,
+        &emb,
+        archetype_id,
+        &sections.unwrap_or_default(),
+        &layout.unwrap_or_default(),
+        tailor.as_ref(),
+    )
 }
 
 /// Injects bio, skills, and experiences into a document generated from the
 /// given layout, then returns the ready-to-compile LaTeX source string.
 ///
 /// # Parameters
-/// * `archetype_id` – Which archetype's tagged items to pull
+/// * `archetype_id` – Which archetype's tagged items to pull; `None` draws on
+///                    the whole record (the job-description path).
 /// * `layout`       – Full visual configuration (fonts, margins, spacing, color)
 /// * `sections`     – Ordered section definitions (heading + categories each).
 ///                    Categories not covered by any definition are appended as
 ///                    their own sections so nothing silently disappears.
+/// * `tailor`       – When set, keep only the experiences that answer the job
+///                    description, within `layout.target_pages`.
 #[tauri::command]
 pub fn inject_template(
-    archetype_id: i64,
+    archetype_id: Option<i64>,
     layout: layout::LayoutConfig,
     sections: Option<Vec<layout::SectionDef>>,
+    tailor: Option<tailor::TailorSpec>,
     state: State<'_, DbState>,
+    emb: State<'_, EmbeddingState>,
 ) -> Result<String, String> {
-    let data = {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
-        assemble_resume_data(&conn, archetype_id, &sections.unwrap_or_default())?
-    };
+    let tailored = tailor.is_some();
+    let data = assemble_tailored(
+        &state,
+        &emb,
+        archetype_id,
+        &sections.unwrap_or_default(),
+        &layout,
+        tailor.as_ref(),
+    )?;
     let (bio, skills, grouped_experiences) = (data.bio, data.skills, data.groups);
 
     if grouped_experiences.is_empty() {
-        return Err(
+        return Err(if tailored {
+            "Nothing in your record matched this job description. Try a fuller posting, \
+             or add the experiences it asks for on the Experiences page."
+                .to_string()
+        } else {
             "No experiences are tagged to this archetype. Tag experiences (not just bullets) \
              on the Archetypes page, otherwise the resume will have no sections."
-                .to_string(),
-        );
+                .to_string()
+        });
     }
 
     // 6. Generate the document from the layout config and inject content.
@@ -420,7 +533,138 @@ pub fn inject_template(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use super::date_sort_key;
+
+    fn test_conn() -> rusqlite::Connection {
+        unsafe {
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        crate::db::run_migrations(&conn).unwrap();
+        conn
+    }
+
+    /// One experience with `bullets` under it; returns its bullet ids in order.
+    fn seed_experience(
+        conn: &rusqlite::Connection,
+        title: &str,
+        category: &str,
+        bullets: &[&str],
+    ) -> Vec<i64> {
+        conn.execute(
+            "INSERT INTO experiences (title, org, category) VALUES (?1, 'Acme', ?2)",
+            rusqlite::params![title, category],
+        )
+        .unwrap();
+        let exp = conn.last_insert_rowid();
+        bullets
+            .iter()
+            .enumerate()
+            .map(|(i, content)| {
+                conn.execute(
+                    "INSERT INTO bullet_points (experience_id, content, sort_order) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![exp, content, i as i64],
+                )
+                .unwrap();
+                conn.last_insert_rowid()
+            })
+            .collect()
+    }
+
+    fn tag(conn: &rusqlite::Connection, archetype: i64, title: &str) {
+        conn.execute(
+            "INSERT INTO archetype_experiences (archetype_id, experience_id)
+             SELECT ?1, id FROM experiences WHERE title = ?2",
+            rusqlite::params![archetype, title],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_assemble_without_archetype_covers_the_whole_record() {
+        let conn = test_conn();
+        seed_experience(&conn, "Tagged", "job", &["Shipped the thing"]);
+        seed_experience(&conn, "Untagged", "project", &["Built another thing"]);
+        conn.execute("INSERT INTO archetypes (name) VALUES ('SWE')", []).unwrap();
+        let arch = conn.last_insert_rowid();
+        tag(&conn, arch, "Tagged");
+        conn.execute("INSERT INTO skills (category, name) VALUES ('Languages', 'Rust')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO archetype_skills (archetype_id, skill_id) SELECT ?1, id FROM skills",
+            [arch],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO skills (category, name) VALUES ('Tools', 'Docker')", [])
+            .unwrap();
+
+        let titles = |data: &ResumeData| {
+            let mut t: Vec<String> = data
+                .groups
+                .iter()
+                .flat_map(|g| g.entries.iter().map(|e| e.title.clone()))
+                .collect();
+            t.sort();
+            t
+        };
+
+        let scoped = assemble_resume_data(&conn, Some(arch), &[]).unwrap();
+        assert_eq!(titles(&scoped), vec!["Tagged"]);
+        assert_eq!(scoped.skills.len(), 1, "only the tagged skill category");
+        assert!(scoped.tailoring.is_none());
+
+        // `None` is the job-description path: everything is fair game.
+        let whole = assemble_resume_data(&conn, None, &[]).unwrap();
+        assert_eq!(titles(&whole), vec!["Tagged", "Untagged"]);
+        assert_eq!(whole.skills.len(), 2, "untagged skills come along too");
+    }
+
+    #[test]
+    fn test_bullet_ids_match_their_content_through_tailoring() {
+        let conn = test_conn();
+        let ids = seed_experience(
+            &conn,
+            "Engineer",
+            "job",
+            &["First bullet", "Second bullet", "Third bullet"],
+        );
+        seed_experience(&conn, "Unrelated", "project", &["Off-topic work"]);
+
+        let data = assemble_resume_data(&conn, None, &[]).unwrap();
+        let entry = data
+            .groups
+            .iter()
+            .flat_map(|g| &g.entries)
+            .find(|e| e.title == "Engineer")
+            .expect("seeded experience must be assembled");
+        assert_eq!(
+            entry.bullet_ids, ids,
+            "ids must stay parallel to `bullets`, in sort_order"
+        );
+        assert_eq!(entry.bullets[1], "Second bullet");
+
+        // Score only the middle bullet: tailoring must keep exactly that text.
+        let scores: HashMap<i64, f64> = [(ids[1], 1.0)].into_iter().collect();
+        let (groups, report) = tailor::select_within_budget(
+            &data.bio,
+            &data.skills,
+            data.groups,
+            &scores,
+            &layout::LayoutConfig::default(),
+            &tailor::TailorSpec::default(),
+        );
+
+        assert_eq!(groups.len(), 1, "the unmatched experience's section is gone");
+        assert_eq!(groups[0].entries.len(), 1);
+        assert_eq!(groups[0].entries[0].bullets, vec!["Second bullet"]);
+        assert_eq!(groups[0].entries[0].bullet_ids, vec![ids[1]]);
+        assert_eq!(report.matched_bullets, 1);
+        assert_eq!(report.kept_bullets, 1);
+    }
 
     #[test]
     fn test_date_sort_key_ordering() {

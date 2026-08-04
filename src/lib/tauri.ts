@@ -255,11 +255,55 @@ export interface SectionGroupData {
   entries: ResumeEntryData[];
 }
 
+/// A job description to tailor the resume against. Mirrors `TailorSpec` in
+/// src-tauri/src/latex/tailor.rs.
+export interface TailorSpec {
+  job_description: string;
+  /// Cap on bullets kept under one experience (backend default: 6).
+  max_bullets_per_entry?: number | null;
+  /// Experiences the user switched off — never included.
+  excluded_experience_ids?: number[];
+  /// Experiences the user switched on — admitted ahead of the retrieval
+  /// ranking, so one that "didn't fit" pushes a weaker match out instead.
+  pinned_experience_ids?: number[];
+}
+
+/// One experience retrieval considered, and what became of it. Mirrors
+/// `TailoredExperience` in src-tauri/src/latex/tailor.rs.
+export interface TailoredExperience {
+  experience_id: number;
+  title: string;
+  org: string | null;
+  heading: string;
+  matched_bullets: number;
+  kept_bullets: number;
+  kept: boolean;
+  dropped_for_space: boolean;
+  excluded: boolean;
+  pinned: boolean;
+}
+
+/// What tailoring actually cut. Mirrors `TailorReport` in
+/// src-tauri/src/latex/tailor.rs.
+export interface TailorReport {
+  matched_bullets: number;
+  kept_bullets: number;
+  kept_entries: number;
+  dropped_entries: number;
+  target_pages: number;
+  estimated_pages: number;
+  budget_exhausted: boolean;
+  /// Every experience in the running, best-first.
+  experiences: TailoredExperience[];
+}
+
 /// Mirrors `ResumeData` in src-tauri/src/latex/commands.rs.
 export interface ResumeData {
   bio: Bio;
   skills: [string, string[]][];
   groups: SectionGroupData[];
+  /// Present only when the content was tailored to a job description.
+  tailoring?: TailorReport | null;
 }
 
 /// A named resume section mapping to one or more experience categories.
@@ -290,12 +334,26 @@ export interface EducationDetails {
 export const getLayoutPresets = () => invoke<LayoutPreset[]>('get_layout_presets');
 export const compileTex = (source: string) => invoke<number[]>('compile_tex', { source });
 export const getDefaultTemplate = () => invoke<string>('get_default_template');
-export const injectTemplate = (archetype_id: number, layout: LayoutConfig, sections: SectionDef[] | null) =>
-  invoke<string>('inject_template', { archetypeId: archetype_id, layout, sections });
-export const getArchetypeCategories = (archetype_id: number) =>
+// `archetype_id: null` on the three calls below means "the whole record" —
+// the job-description path, which retrieves across everything instead of a
+// curated archetype. Passing `tailor` narrows the result to what the posting
+// asks for, trimmed to `layout.target_pages`.
+export const injectTemplate = (
+  archetype_id: number | null,
+  layout: LayoutConfig,
+  sections: SectionDef[] | null,
+  tailor: TailorSpec | null = null,
+) =>
+  invoke<string>('inject_template', { archetypeId: archetype_id, layout, sections, tailor });
+export const getArchetypeCategories = (archetype_id: number | null) =>
   invoke<string[]>('get_archetype_categories', { archetypeId: archetype_id });
-export const getResumeData = (archetype_id: number, sections: SectionDef[] | null) =>
-  invoke<ResumeData>('get_resume_data', { archetypeId: archetype_id, sections });
+export const getResumeData = (
+  archetype_id: number | null,
+  sections: SectionDef[] | null,
+  layout: LayoutConfig | null = null,
+  tailor: TailorSpec | null = null,
+) =>
+  invoke<ResumeData>('get_resume_data', { archetypeId: archetype_id, sections, layout, tailor });
 export const savePdf = (path: string, data: number[]) =>
   invoke<void>('save_pdf', { path, data });
 
