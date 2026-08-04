@@ -1,27 +1,90 @@
 # Cover Letter Model Fine-Tuning Pipeline
 
-Fine-tunes a small local model (default: Qwen2.5-3B-Instruct) to write cover
-letters in this app's exact prompt format, **conditioned on cover letter
-templates** — the model follows whatever template appears in its prompt, so new
-templates submitted in the app work immediately, no retraining.
+Fine-tunes a 3B local model to write cover letters in this app's exact prompt
+format, **conditioned on the cover-letter template in the prompt** — so a
+template a user writes today works without retraining. Trained end-to-end here:
+scrape real job postings → synthesize candidates → distill from a teacher model →
+LoRA → GGUF → quantize → judged eval. The ~1.8 GB result runs on CPU inside the
+desktop app, offline.
 
-**The result is a generic, drop-in artifact.** Training never touches a real
-user's data:
+**Headline result:** against an identically-quantized stock base, the tuned model
+**halves fabricated claims (98 → 46)** and lifts template adherence **1.85 → 3.28
+of 5** across 120 held-out letters.
+
+## Results
+
+Held-out split: **20 real scraped JDs × 3 templates × 2 models = 120 letters**.
+Both models get byte-identical prompts at `--temp 0`; each letter is scored 1–5
+by `claude-sonnet-5`. The base is stock Qwen2.5-3B-Instruct pushed through the
+*same* convert+quantize path as the tuned model, so the delta isolates the
+fine-tune rather than quantization noise.
+
+| Criterion | Base | Tuned | Δ | Win/Tie/Loss | Sign test |
+|---|---|---|---|---|---|
+| template_adherence | 1.85 | **3.28** | +1.43 | 52 / 5 / 3 | p = 1.5e-12 |
+| grounding | 3.05 | **4.12** | +1.07 | 42 / 12 / 6 | p = 1.0e-07 |
+| writing_quality | 3.03 | **3.73** | +0.70 | 41 / 15 / 4 | p = 9.3e-09 |
+
+Fabrication is the metric that matters most for a tool that writes about
+someone's real career:
+
+| | Base | Tuned |
+|---|---|---|
+| Letters with zero fabricated claims | 10/60 (17%) | **31/60 (52%)** |
+| Total fabricated claims | 98 | **46** |
+| Perfect grounding (5/5) | 10/60 | **29/60** |
+| `template_adherence` ≥ 4 | 1/60 | **18/60** |
+
+**The base model scores `template_adherence` ≥ 4 on 1 of 60 letters.**
+Template-following is the capability the fine-tune buys; the stock model
+essentially ignores a supplied template no matter how the prompt is worded.
+
+Gains hold on all three templates, and the ordering is informative: the base does
+best on Problem-Solution because that's the shape it defaults to anyway, and
+worst on Career Change, the least conventional structure.
+
+| Template | Base | Tuned | Δ |
+|---|---|---|---|
+| Career Change | 2.35 | 3.75 | +1.40 |
+| Narrative / Storytelling | 2.60 | 3.58 | +0.98 |
+| Problem-Solution | 2.98 | 3.80 | +0.82 |
+
+### How to read these numbers
+
+- **The judge is `claude-sonnet-5`, the same model that wrote the training
+  letters**, so it rewards its own house style — `template_adherence` and
+  `writing_quality` are inflated by an unknown amount. `grounding` is the
+  defensible one: it's checkable against the bullet list rather than taste.
+- **Effective N is closer to 20 than 60.** The three templates within a JD share
+  one profile and bullet set, so cells are correlated and the p-values are
+  optimistic. The effect sizes are large enough that this doesn't change the
+  conclusion.
+- The judge occasionally counts an honest *"I have not yet worked directly
+  with…"* gap acknowledgment as a fabrication (14 of base's 98 flagged quotes, 5
+  of tuned's 46). Excluding them: 84 vs 41 — still a ~51% reduction.
+
+Reproduce with step 6 below; raw per-letter output lands in
+`data/eval_results.json`.
+
+## Why the artifact is shareable
+
+Training never touches a real user's data, so the quantized GGUF is a generic
+drop-in that any user can point the app at:
 
 - **Job descriptions are real, scraped** from public job-board APIs (RemoteOK,
   Greenhouse, Lever).
 - **Candidates are fictional**: a teacher model generates a varied candidate
-  profile per posting (some deliberately partial-fit, so the model learns
-  honest gap acknowledgment), and the same embedding retrieval the app uses
-  picks the top-k bullets — training inputs have exactly the shape the app's
-  RAG produces at inference.
+  profile per posting (some deliberately partial-fit, so the model learns honest
+  gap acknowledgment), and the same embedding retrieval the app uses picks the
+  top-k bullets — training inputs have exactly the shape the app's RAG produces
+  at inference.
 - At inference the app's RAG drops in the *actual* user's relevant experiences;
-  because the model saw hundreds of different "users" in training, it
-  generalizes instead of memorizing one person.
+  because the model saw hundreds of different "users" in training, it generalizes
+  instead of memorizing one person.
 
-So the quantized GGUF can be shared (e.g. uploaded to HuggingFace) and any user
-just points the app at it. This directory is developer tooling — never part of
-the app build.
+This directory is developer tooling — never part of the app build.
+
+---
 
 ## Prerequisites
 
@@ -79,8 +142,12 @@ python llama.cpp/convert_hf_to_gguf.py out/merged --outfile out/coverletter-f16.
 # download llama-bXXXX-bin-win-cpu-x64.zip from https://github.com/ggml-org/llama.cpp/releases
 llama-quantize.exe out\coverletter-f16.gguf out\coverletter-Q4_K_M.gguf Q4_K_M
 
-# 6. Evaluate base vs tuned on the held-out real JDs (llama-cli.exe from the same zip)
-python eval.py --llama-cli <path>\llama-cli.exe --base <Qwen2.5-3B-Instruct-Q4_K_M.gguf> --tuned out\coverletter-Q4_K_M.gguf
+# 6. Evaluate base vs tuned on the held-out real JDs (llama-completion.exe from the same zip).
+#    Must be llama-completion.exe: since b10066 llama-cli ignores -no-cnv, drops into
+#    chat mode and blocks forever on empty stdin. Needs a base GGUF to compare against —
+#    quantize one from the stock Qwen2.5-3B-Instruct with the same step 5 commands.
+#    ~40s/letter x 120 letters on CPU; each cell is cached, so reruns are free.
+python eval.py --llama-cli <path>\llama-completion.exe --base out\base-qwen2.5-3b-Q4_K_M.gguf --tuned out\coverletter-Q4_K_M.gguf
 ```
 
 Finally: in the app, **Settings → Local (GGUF)** → paste the path to
@@ -105,7 +172,7 @@ drifted prompt silently degrades the model.
 
 ## Model / size notes
 
-- The app runs GGUFs on **CPU** via llama.cpp: the 3B Q4_K_M (~2 GB file,
+- The app runs GGUFs on **CPU** via llama.cpp: the 3B Q4_K_M (~1.8 GB file,
   ~3 GB RSS) fits 8 GB-RAM machines, generating a letter in roughly 1–2 min.
 - Qwen2.5-3B-Instruct uses the Qwen **Research** license (non-commercial). For
   Apache-2.0 (required if you distribute the tuned model broadly) or ~2x faster

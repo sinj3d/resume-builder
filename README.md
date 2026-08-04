@@ -1,11 +1,41 @@
 # Resume Builder
 
-A local-first desktop app for managing tailored resumes and cover letters. You
-maintain one master pool of experiences, bullet points, and skills, tag them into
-role-specific **archetypes**, and generate a polished LaTeX resume PDF (plus AI
-cover letters) for each archetype — all on your own machine.
+A local-first desktop app for tailored resumes and cover letters. Maintain one
+master pool of experiences, bullet points, and skills, tag them into role-specific
+**archetypes**, and generate a polished LaTeX resume PDF plus an AI cover letter
+for each — entirely on your own machine.
 
-Built with **Tauri 2** (Rust backend) + **React 19 / TypeScript / Vite / Tailwind**.
+**Tauri 2** (Rust backend) · **React 19 / TypeScript / Vite / Tailwind** ·
+on-device embeddings + RAG · a cover-letter model fine-tuned *and evaluated* in
+this repo.
+
+[**Download an installer**](https://github.com/sinj3d/resume-builder/releases) ·
+[Fine-tuning pipeline & full eval](training/README.md)
+
+![Tagging a master record into an archetype, pasting a job posting so retrieval pulls only what it asks for, and restyling the LaTeX resume live](docs/demo.gif)
+
+<sub>Master record → archetype → paste a real posting → retrieval keeps what answers it and fits the page → restyle. Switching one entry off frees space and the entry that didn't fit comes back. Demo profile is fictional.</sub>
+
+## A fine-tuned model, measured
+
+The cover-letter model isn't a wrapped API call — it's trained in
+[`training/`](training/README.md) and benchmarked against the stock base on
+**120 held-out letters** (20 real scraped job descriptions × 3 templates × 2
+models, byte-identical prompts, `--temp 0`, each scored 1–5 by a judge model):
+
+| Criterion | Base | Tuned | Δ |
+| --- | --- | --- | --- |
+| template_adherence | 1.85 | **3.28** | +1.43 |
+| grounding (no fabrication) | 3.05 | **4.12** | +1.07 |
+| writing_quality | 3.03 | **3.73** | +0.70 |
+
+Fabricated claims across the run: **98 → 46**. Letters with zero fabrication:
+**17% → 52%**. The base model follows a supplied template well (≥ 4/5) on 1 of
+60 letters; the tuned model on 18.
+
+Methodology, per-template breakdown, significance tests, and the honest caveats
+(the judge shares the teacher's house style; effective N is closer to 20 than 60)
+are in [`training/README.md`](training/README.md).
 
 ## Highlights
 
@@ -15,22 +45,23 @@ Built with **Tauri 2** (Rust backend) + **React 19 / TypeScript / Vite / Tailwin
   (e.g. "General SWE", "ML Engineer") and generate a resume per profile.
 - **Semantic retrieval (RAG)** — every bullet is embedded on-device
   (all-MiniLM-L6-v2 ONNX, 384-dim) into a `sqlite-vec` table for similarity search.
-- **LaTeX generation** — inject an archetype's content into one of three templates
-  with page-length-aware spacing, compile with **Tectonic**, preview the PDF, and
-  export.
+- **Job-description-tailored resumes** — instead of picking an archetype, paste
+  a posting: hybrid retrieval ranks your whole record against it, keeps the
+  experiences and bullets that answer it, and stops once the estimated length
+  hits your page target (raise the target, more comes back in).
+- **LaTeX generation** — inject an archetype's content into the resume template
+  with page-length-aware spacing, restyle it with six color/layout presets,
+  compile with **Tectonic**, preview the PDF, and export.
 - **Offline resume import** — parse an existing PDF resume into structured
   experiences using a **specialized local model** that downloads once and then runs
-  fully offline (no cloud, no API key). See below.
-- **Cover letters** — RAG-grounded, zero-hallucination generation via a local GGUF
-  model (a **purpose-fine-tuned model** ships from this repo's pipeline — see below)
-  or, optionally, the Gemini cloud API.
+  fully offline (no cloud, no API key).
+- **Cover letters** — RAG-grounded, zero-hallucination generation via the local
+  fine-tuned GGUF, or optionally the Gemini cloud API.
 - **Cover letter templates** — pick a structural template (T-format, narrative,
   problem–solution, …) or write your own on the Templates page; the generator
   follows its structure, length, and tone. Seven builtins are seeded on first run.
-- **Fine-tuning pipeline** — [`training/`](training/README.md) builds a generic,
-  drop-in cover-letter model: real scraped job postings, teacher-distilled letters
-  (Claude via the Batch API), QLoRA on Qwen2.5-3B, exported to a ~1.8 GB GGUF that
-  runs on 8 GB machines.
+- **Application tracking** — log where each generated resume went and what came
+  back.
 
 ## Local-first & privacy
 
@@ -51,7 +82,7 @@ model) and — only if you explicitly choose cloud mode — cover-letter generat
 ### The specialized resume parser
 
 Resume import is **local-only**. On the first import the app downloads a small
-instruct model (Qwen2.5-1.5B-Instruct, Q4_K_M GGUF, ~1 GB) into the app-data
+instruct model (Qwen2.5-1.5B-Instruct, Q4_K_M GGUF, ~1.1 GB) into the app-data
 directory, then runs it on-device to turn resume text into a strict
 `{ "experiences": [...] }` JSON payload. The model output is recovered and
 validated in Rust (markdown fences, stray prose, and trailing commas are handled),
@@ -84,7 +115,7 @@ user data is involved in training:
    exactly. Every letter passes mechanical quality filters plus an LLM
    fabrication check.
 3. QLoRA fine-tunes Qwen2.5-3B-Instruct, which is merged and quantized to a
-   **Q4_K_M GGUF (~1.8 GB)** that generates a letter in ~30 s on CPU.
+   **Q4_K_M GGUF (~1.8 GB)** that generates a letter in roughly 1–2 min on CPU.
 
 The prompt format is a byte-level contract between the app and the pipeline:
 [`llm/prompt.rs`](src-tauri/src/llm/prompt.rs) and
@@ -175,13 +206,14 @@ cargo test --no-default-features llm::parse   # skips building the local-LLM eng
 ```
 src/                     React frontend
   pages/                 Experiences, Archetypes, Generate, Templates, Latex, Bio,
-                         Onboarding, Settings
+                         Applications, Onboarding, Settings
   lib/tauri.ts           Typed wrappers over Tauri commands
 src-tauri/src/
   db/                    SQLite schema, models, CRUD commands, builtin template seeds
   rag/                   ONNX embedding model + vector search
   llm/                   Cover letters, settings, local resume parser, prompt golden files
-  latex/                 Templates, injection, Tectonic download & compile
+  latex/                 Template, layout presets, injection, Tectonic download & compile
+                         (tailor.rs: job-description retrieval trimmed to a page budget)
 training/                Fine-tuning pipeline (scrape → distill → QLoRA → GGUF);
                          see training/README.md
 ```
