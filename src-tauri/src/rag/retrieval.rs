@@ -37,7 +37,7 @@ struct Candidate {
 
 /// Hybrid retrieval: semantic KNN + FTS5 keyword search, fused with
 /// Reciprocal Rank Fusion. The single entry point for every retrieval path
-/// (search UI and cover-letter generation).
+/// (search UI, cover-letter generation, and job-description resume tailoring).
 ///
 /// Degrades gracefully: with no embeddings it is pure keyword search, with no
 /// FTS matches it is pure vector search, and with neither it returns an empty
